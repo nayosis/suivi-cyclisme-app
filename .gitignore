@@ -1,0 +1,11 @@
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Claude Code local state
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
