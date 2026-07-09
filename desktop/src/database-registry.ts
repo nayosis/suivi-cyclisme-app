@@ -1,4 +1,6 @@
-import { BaseDirectory, exists } from "@tauri-apps/plugin-fs";
+import { BaseDirectory, exists, readDir } from "@tauri-apps/plugin-fs";
+import { appDataDir } from "@tauri-apps/api/path";
+import Database from "@tauri-apps/plugin-sql";
 
 const REGISTRY_KEY = "suivi-cyclisme-db-registry";
 const CURRENT_KEY = "suivi-cyclisme-current-db";
@@ -106,4 +108,97 @@ export async function migrateLegacyDatabaseIfNeeded(): Promise<void> {
   const entry: DatabaseEntry = { name: LEGACY_DISPLAY_NAME, filename: LEGACY_FILENAME };
   writeRegistry([entry]);
   localStorage.setItem(CURRENT_KEY, entry.filename);
+}
+
+export interface ScanResult {
+  /** Bases trouvées sur le disque, pas encore connues du registre, et ajoutées. */
+  added: DatabaseEntry[];
+  /** Fichiers .db trouvés mais dont le schéma ne correspond pas à Suivi Cyclisme (ignorés). */
+  invalid: string[];
+  /** Bases du registre dont le fichier n'existe plus sur le disque, retirées. */
+  removed: DatabaseEntry[];
+  /** Renseigné si la base active a disparu et qu'on a basculé sur une autre base restante. */
+  switchedTo: DatabaseEntry | null;
+  /** `true` si la base active a disparu et qu'aucune autre base ne restait pour prendre le relais. */
+  currentCleared: boolean;
+}
+
+/** Vérifie qu'un fichier .db a bien les tables attendues (`bikes`, `rides`). */
+async function isValidSuiviCyclismeDb(filename: string): Promise<boolean> {
+  let database: Database | null = null;
+  try {
+    database = await Database.load(`sqlite:${filename}`);
+    const tables = await database.select<{ name: string }[]>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('bikes', 'rides')"
+    );
+    return tables.length === 2;
+  } catch {
+    return false;
+  } finally {
+    if (database) {
+      try {
+        await database.close();
+      } catch {
+        // rien à faire : la connexion est de toute façon abandonnée
+      }
+    }
+  }
+}
+
+/**
+ * Scanne le dossier de données de l'application :
+ * - ajoute les fichiers `.db` présents sur le disque mais pas encore connus
+ *   du registre (ex. copiés manuellement), après vérification de leur schéma ;
+ * - retire du registre les bases qui y figurent mais dont le fichier a
+ *   disparu (supprimé manuellement en dehors de l'application) ;
+ * - si la base active a disparu, bascule automatiquement sur une base
+ *   restante s'il y en a une, sinon efface la sélection active.
+ */
+export async function scanForDatabases(): Promise<ScanResult> {
+  // On passe le chemin absolu résolu plutôt que "." + baseDir : Tauri joint
+  // littéralement "." au chemin (`$APPDATA/.`), ce qui ne correspond pas au
+  // motif de portée `$APPDATA/**` déclaré dans les capabilities et est donc
+  // refusé ("forbidden path").
+  const dir = await appDataDir();
+  const dirEntries = await readDir(dir);
+  const filenamesOnDisk = new Set(
+    dirEntries.filter((e) => e.isFile && e.name.toLowerCase().endsWith(".db")).map((e) => e.name)
+  );
+
+  const registry = readRegistry();
+
+  const removed = registry.filter((e) => !filenamesOnDisk.has(e.filename));
+  const survivors = registry.filter((e) => filenamesOnDisk.has(e.filename));
+
+  const knownFilenames = new Set(survivors.map((e) => e.filename));
+  const added: DatabaseEntry[] = [];
+  const invalid: string[] = [];
+
+  for (const filename of filenamesOnDisk) {
+    if (knownFilenames.has(filename)) continue;
+    if (await isValidSuiviCyclismeDb(filename)) {
+      added.push({ name: filename.replace(/\.db$/i, ""), filename });
+    } else {
+      invalid.push(filename);
+    }
+  }
+
+  const finalRegistry = [...survivors, ...added];
+  writeRegistry(finalRegistry);
+
+  let switchedTo: DatabaseEntry | null = null;
+  let currentCleared = false;
+  const currentFilename = getCurrentDatabaseFilename();
+  const currentStillPresent = finalRegistry.some((e) => e.filename === currentFilename);
+  if (currentFilename && !currentStillPresent) {
+    if (finalRegistry.length > 0) {
+      switchedTo = finalRegistry[0];
+      localStorage.setItem(CURRENT_KEY, switchedTo.filename);
+    } else {
+      localStorage.removeItem(CURRENT_KEY);
+      currentCleared = true;
+    }
+  }
+
+  return { added, invalid, removed, switchedTo, currentCleared };
 }

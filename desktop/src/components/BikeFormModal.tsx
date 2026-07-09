@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { DEFAULT_BIKE_COLOR } from "../types";
+import { errorMessage } from "../format";
 import { Modal } from "./Modal";
 
 interface BikeFormModalProps {
@@ -30,7 +31,7 @@ export function BikeFormModal({
     try {
       await onSave(name.trim(), color);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      setError(errorMessage(err));
     }
   }
 
@@ -40,7 +41,7 @@ export function BikeFormModal({
     try {
       await onDelete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      setError(errorMessage(err));
     }
   }
 

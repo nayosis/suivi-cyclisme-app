@@ -55,3 +55,22 @@ export function formatSpeed(distanceKm: number, durationMinutes: number): string
   const kmh = distanceKm / (durationMinutes / 60);
   return `${formatNumber(kmh, 1)} km/h`;
 }
+
+/**
+ * Extrait un message lisible d'une erreur attrapée dans un `catch`.
+ *
+ * Les commandes Tauri rejettent souvent avec une simple **chaîne** plutôt
+ * qu'une véritable instance `Error` — un `err instanceof Error ? err.message
+ * : "erreur inconnue"` masque alors silencieusement le vrai message. Cette
+ * fonction couvre aussi ce cas pour ne jamais perdre l'information utile au
+ * diagnostic.
+ */
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Erreur inconnue.";
+  }
+}

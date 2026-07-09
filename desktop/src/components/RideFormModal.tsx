@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import type { Bike, Ride, RideInput } from "../types";
+import { errorMessage } from "../format";
 import { Modal } from "./Modal";
 
 interface RideFormModalProps {
@@ -57,7 +58,7 @@ export function RideFormModal({ bikes, ride, onSave, onDelete, onClose }: RideFo
         bike_id: bikeId,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      setError(errorMessage(err));
     }
   }
 
@@ -67,7 +68,7 @@ export function RideFormModal({ bikes, ride, onSave, onDelete, onClose }: RideFo
     try {
       await onDelete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      setError(errorMessage(err));
     }
   }
 

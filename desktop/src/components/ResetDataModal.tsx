@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as db from "../db";
 import { exportToFile } from "../data-transfer";
+import { errorMessage } from "../format";
 import { Modal } from "./Modal";
 
 const CONFIRM_WORD = "SUPPRIMER";
@@ -35,11 +36,7 @@ export function ResetDataModal({ onClose, onDone }: ResetDataModalProps) {
       didExport = await exportToFile();
     } catch (err) {
       setStep("error");
-      setError(
-        `La sauvegarde a échoué : suppression annulée par sécurité. (${
-          err instanceof Error ? err.message : "erreur inconnue"
-        })`
-      );
+      setError(`La sauvegarde a échoué : suppression annulée par sécurité. (${errorMessage(err)})`);
       return;
     }
     if (!didExport) {
@@ -53,11 +50,7 @@ export function ResetDataModal({ onClose, onDone }: ResetDataModalProps) {
       await db.deleteAllData();
     } catch (err) {
       setStep("error");
-      setError(
-        `La sauvegarde a bien été enregistrée mais la suppression a échoué : ${
-          err instanceof Error ? err.message : "erreur inconnue"
-        }`
-      );
+      setError(`La sauvegarde a bien été enregistrée mais la suppression a échoué : ${errorMessage(err)}`);
       return;
     }
 

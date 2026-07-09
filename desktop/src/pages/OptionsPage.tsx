@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
+import { errorMessage } from "../format";
 import { ResetDataModal } from "../components/ResetDataModal";
 import { CreateDatabaseModal } from "../components/CreateDatabaseModal";
+import { RefreshIcon } from "../components/RefreshIcon";
 import {
   createDatabase,
   getCurrentDatabaseFilename,
   listDatabases,
+  scanForDatabases,
   switchDatabase,
   type DatabaseEntry,
 } from "../database-registry";
@@ -21,17 +24,27 @@ const THEME_LABELS: Record<ThemeMode, string> = {
   dark: "Sombre",
 };
 
+interface StatusMessage {
+  type: "success" | "warning" | "error";
+  text: string;
+}
+
+function StatusText({ message }: { message: StatusMessage | null }) {
+  if (!message) return null;
+  return <div className={`${message.type}-text`}>{message.text}</div>;
+}
+
 export function OptionsPage({ onDataChanged }: OptionsPageProps) {
   const { mode, setMode } = useTheme();
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
-  const [message, setMessage] = useState<{
-    type: "success" | "warning" | "error";
-    text: string;
-  } | null>(null);
+  const [dataMessage, setDataMessage] = useState<StatusMessage | null>(null);
+  const [dbMessage, setDbMessage] = useState<StatusMessage | null>(null);
+  const [resetMessage, setResetMessage] = useState<StatusMessage | null>(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [createDbModalOpen, setCreateDbModalOpen] = useState(false);
   const [databases, setDatabases] = useState<DatabaseEntry[]>([]);
   const [currentDbFilename, setCurrentDbFilename] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     setDatabases(listDatabases());
@@ -40,15 +53,12 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
 
   async function handleExport() {
     setBusy("export");
-    setMessage(null);
+    setDataMessage(null);
     try {
       const done = await exportToFile();
-      if (done) setMessage({ type: "success", text: "Export réalisé avec succès." });
+      if (done) setDataMessage({ type: "success", text: "Export réalisé avec succès." });
     } catch (err) {
-      setMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Erreur inconnue lors de l'export.",
-      });
+      setDataMessage({ type: "error", text: errorMessage(err) });
     } finally {
       setBusy(null);
     }
@@ -56,24 +66,21 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
 
   async function handleImport() {
     setBusy("import");
-    setMessage(null);
+    setDataMessage(null);
     try {
       const summary = await importFromFile();
       if (summary) {
         const warning = summary.newerFormatDetected
           ? " Ce fichier vient d'une version plus récente de l'application : certaines données ont pu être ignorées."
           : "";
-        setMessage({
+        setDataMessage({
           type: summary.newerFormatDetected ? "warning" : "success",
           text: `Import terminé : ${summary.bikesAdded} vélo(s) ajouté(s), ${summary.ridesAdded} sortie(s) ajoutée(s), ${summary.ridesSkipped} ignorée(s) (déjà présentes).${warning}`,
         });
         onDataChanged();
       }
     } catch (err) {
-      setMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Erreur inconnue lors de l'import.",
-      });
+      setDataMessage({ type: "error", text: errorMessage(err) });
     } finally {
       setBusy(null);
     }
@@ -83,8 +90,49 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
     if (filename === currentDbFilename) return;
     switchDatabase(filename);
     setCurrentDbFilename(filename);
-    setMessage(null);
+    setDbMessage(null);
     onDataChanged();
+  }
+
+  async function handleScan() {
+    setScanning(true);
+    setDbMessage(null);
+    try {
+      const { added, invalid, removed, switchedTo, currentCleared } = await scanForDatabases();
+      setDatabases(listDatabases());
+
+      const parts: string[] = [];
+      parts.push(
+        added.length > 0
+          ? `${added.length} base(s) trouvée(s) et ajoutée(s) : ${added.map((d) => d.name).join(", ")}.`
+          : "Aucune nouvelle base trouvée."
+      );
+      if (removed.length > 0) {
+        parts.push(
+          `${removed.length} base(s) retirée(s) (fichier introuvable) : ${removed.map((d) => d.name).join(", ")}.`
+        );
+      }
+      if (invalid.length > 0) {
+        parts.push(`${invalid.length} fichier(s) ignoré(s) (schéma non reconnu) : ${invalid.join(", ")}.`);
+      }
+      if (switchedTo) {
+        parts.push(`La base active a disparu : bascule automatique sur « ${switchedTo.name} ».`);
+        setCurrentDbFilename(switchedTo.filename);
+        onDataChanged();
+      } else if (currentCleared) {
+        parts.push(
+          "La base active a disparu et aucune autre base n'est disponible : redémarrez l'application pour en créer une nouvelle."
+        );
+        setCurrentDbFilename(null);
+      }
+
+      const hasWarning = removed.length > 0 || invalid.length > 0 || switchedTo || currentCleared;
+      setDbMessage({ type: hasWarning ? "warning" : "success", text: parts.join(" ") });
+    } catch (err) {
+      setDbMessage({ type: "error", text: errorMessage(err) });
+    } finally {
+      setScanning(false);
+    }
   }
 
   return (
@@ -119,17 +167,29 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
               Basculez vers une autre base de données créée précédemment.
             </div>
           </div>
-          <select
-            className="select-input"
-            value={currentDbFilename ?? ""}
-            onChange={(e) => handleSwitchDatabase(e.target.value)}
-          >
-            {databases.map((d) => (
-              <option key={d.filename} value={d.filename}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select
+              className="select-input"
+              value={currentDbFilename ?? ""}
+              onChange={(e) => handleSwitchDatabase(e.target.value)}
+            >
+              {databases.map((d) => (
+                <option key={d.filename} value={d.filename}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={handleScan}
+              disabled={scanning}
+              title="Actualiser la liste (scanne le dossier de données)"
+              aria-label="Actualiser la liste des bases de données"
+            >
+              <RefreshIcon spinning={scanning} />
+            </button>
+          </div>
         </div>
         <div className="options-row">
           <div>
@@ -142,6 +202,8 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
             Créer…
           </button>
         </div>
+
+        <StatusText message={dbMessage} />
       </div>
 
       <div className="section-title">Données</div>
@@ -171,7 +233,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
           </button>
         </div>
 
-        {message && <div className={`${message.type}-text`}>{message.text}</div>}
+        <StatusText message={dataMessage} />
       </div>
 
       <div className="section-title section-title--danger">Zone dangereuse</div>
@@ -189,6 +251,8 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
             Réinitialiser…
           </button>
         </div>
+
+        <StatusText message={resetMessage} />
       </div>
 
       {resetModalOpen && (
@@ -196,7 +260,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
           onClose={() => setResetModalOpen(false)}
           onDone={() => {
             setResetModalOpen(false);
-            setMessage({
+            setResetMessage({
               type: "success",
               text: "Toutes les données ont été supprimées après sauvegarde. L'application repart de zéro.",
             });
@@ -213,7 +277,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
             setDatabases(listDatabases());
             setCurrentDbFilename(entry.filename);
             setCreateDbModalOpen(false);
-            setMessage({ type: "success", text: `Base « ${entry.name} » créée et sélectionnée.` });
+            setDbMessage({ type: "success", text: `Base « ${entry.name} » créée et sélectionnée.` });
             onDataChanged();
           }}
         />

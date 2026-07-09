@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { errorMessage } from "../format";
 import { Modal } from "./Modal";
 
 interface CreateDatabaseModalProps {
@@ -19,7 +20,7 @@ export function CreateDatabaseModal({ onCreate, onClose }: CreateDatabaseModalPr
     try {
       onCreate(name.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue.");
+      setError(errorMessage(err));
     }
   }
 

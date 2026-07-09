@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { createDatabase } from "../database-registry";
+import { errorMessage } from "../format";
 
 interface WelcomeSetupProps {
   onDone: () => void;
@@ -20,7 +21,7 @@ export function WelcomeSetup({ onDone }: WelcomeSetupProps) {
       createDatabase(name);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue.");
+      setError(errorMessage(err));
     }
   }
 
