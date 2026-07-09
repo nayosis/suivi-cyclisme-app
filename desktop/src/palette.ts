@@ -1,18 +1,8 @@
-import { useEffect, useState } from "react";
-
-export function useIsDark(): boolean {
-  const [isDark, setIsDark] = useState(
-    () => window.matchMedia("(prefers-color-scheme: dark)").matches
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isDark;
-}
-
+/**
+ * Jeu de couleurs utilisé par les graphiques (recharts), en miroir des
+ * variables CSS définies dans `theme.css`. Le thème actif (clair/sombre) est
+ * fourni par `useTheme()` (voir `theme-context.tsx`).
+ */
 export const PALETTE = {
   light: {
     gridline: "#e1e0d9",

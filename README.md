@@ -9,9 +9,12 @@ calendrier d'activité).
 
 ```
 suivi-cyclisme-app/
-├── desktop/            # L'application (Tauri + React + TypeScript)
-└── suivi perf velo/    # Fichiers Excel sources : historique des sorties 2016-2026
+└── desktop/    # L'application (Tauri + React + TypeScript)
 ```
+
+Le dépôt ne contient aucune donnée personnelle : ni base de données, ni
+export, ni fichier source d'historique. La base démarre vide (voir
+[Sauvegarde / transfert des données](#sauvegarde--transfert-des-données)).
 
 ## Stack technique
 
@@ -44,21 +47,32 @@ Organisation :
   interrogée directement depuis le TypeScript (`db.ts`) via des requêtes SQL,
   sans passer par des commandes Rust custom — toute la logique métier vit
   côté frontend.
-- Le seul code Rust "métier" du projet est dans `src-tauri/src/lib.rs` : au
-  premier lancement, il copie la base SQLite "graine"
-  (`src-tauri/resources/suivi_cyclisme.db`, qui contient tout l'historique
-  importé depuis `suivi perf velo/`) vers le dossier de données de
-  l'application. Les lancements suivants réutilisent cette copie sans jamais
-  écraser les données de l'utilisateur.
+- Le seul code Rust "métier" du projet est dans `src-tauri/src/lib.rs` : il se
+  contente de s'assurer que le dossier de données de l'application existe. La
+  base SQLite elle-même (schéma seul, vide) est créée au premier lancement par
+  `db.ts` via `tauri-plugin-sql` — aucune donnée n'est embarquée dans l'exe.
 
 ### Où vivent les données une fois l'app lancée ?
 
-La base SQLite réelle (celle que l'app lit/écrit au quotidien) se trouve dans
-le dossier de données de l'application Windows :
-`%APPDATA%\com.vincentgouadon.suivicyclisme\suivi_cyclisme.db`
+`%APPDATA%\<identifier>\suivi_cyclisme.db`, où `<identifier>` est la valeur du
+champ `identifier` dans `src-tauri/tauri.conf.json` (actuellement
+`com.vincentgouadon.suivicyclisme`). Changer cet identifiant fait pointer
+l'app vers un nouveau dossier vide — la base existante n'est pas supprimée,
+juste "orpheline" ; il faut alors ré-importer un export JSON pour récupérer
+ses données.
 
-Ce n'est **pas** le fichier `desktop/src-tauri/resources/suivi_cyclisme.db`,
-qui est seulement la graine copiée au premier lancement.
+### Sauvegarde / transfert des données
+
+L'application ne contient **aucune donnée personnelle** dans son code source :
+la base démarre vide. Pour sauvegarder ou transférer des sorties/vélos, on
+passe par l'onglet **Options** (icône engrenage) :
+- **Exporter** génère un fichier JSON avec tout l'historique (vélos + sorties)
+- **Importer** fusionne un fichier JSON exporté précédemment avec les données
+  existantes (les doublons sont ignorés, rien n'est jamais écrasé)
+
+Le fichier JSON exporté contient un numéro de version de format (`version`),
+pour rester importable même si la structure des données évolue (par exemple
+si un futur suivi d'entretien vélo est ajouté).
 
 ## Lancer l'application en développement
 

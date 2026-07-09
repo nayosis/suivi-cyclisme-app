@@ -2,8 +2,10 @@ import { useState } from "react";
 import { DashboardPage } from "./pages/DashboardPage";
 import { RidesPage } from "./pages/RidesPage";
 import { BikesPage } from "./pages/BikesPage";
+import { OptionsPage } from "./pages/OptionsPage";
+import { GearIcon } from "./components/GearIcon";
 
-type Tab = "dashboard" | "rides" | "bikes";
+type Tab = "dashboard" | "rides" | "bikes" | "options";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -35,9 +37,17 @@ export default function App() {
         >
           Vélos
         </button>
+        <button
+          className={`app-nav__tab app-nav__tab--icon ${tab === "options" ? "active" : ""}`}
+          onClick={() => setTab("options")}
+          title="Options"
+          aria-label="Options"
+        >
+          <GearIcon />
+        </button>
       </nav>
 
-      {/* Les 3 pages restent montées en permanence (affichage bascule via CSS)
+      {/* Les 4 pages restent montées en permanence (affichage bascule via CSS)
           pour que chacune conserve son état (filtres, sélections...) au changement d'onglet. */}
       <div className="app-page" style={{ display: tab === "dashboard" ? "block" : "none" }}>
         <DashboardPage refreshKey={refreshKey} />
@@ -47,6 +57,9 @@ export default function App() {
       </div>
       <div className="app-page" style={{ display: tab === "bikes" ? "block" : "none" }}>
         <BikesPage refreshKey={refreshKey} onDataChanged={bumpRefresh} />
+      </div>
+      <div className="app-page" style={{ display: tab === "options" ? "block" : "none" }}>
+        <OptionsPage onDataChanged={bumpRefresh} />
       </div>
     </div>
   );

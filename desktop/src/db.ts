@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS rides (
 );
 `;
 
+/**
+ * Ouvre (une seule fois, puis met en cache) la connexion à la base SQLite et
+ * s'assure que le schéma est à jour. Toutes les fonctions de ce fichier
+ * passent par ici — c'est le seul point d'entrée vers la base de données.
+ */
 async function getDb(): Promise<Database> {
   if (!dbPromise) {
     dbPromise = (async () => {
@@ -44,14 +49,25 @@ async function getDb(): Promise<Database> {
   return dbPromise;
 }
 
+/** Levée quand on essaie de créer/renommer un vélo avec un nom déjà utilisé. */
 export class BikeAlreadyExistsError extends Error {}
+/** Levée quand on essaie de supprimer un vélo qui a encore des sorties enregistrées. */
 export class BikeInUseError extends Error {}
 
+/** Liste tous les vélos, triés par nom. */
 export async function listBikes(): Promise<Bike[]> {
   const db = await getDb();
   return db.select<Bike[]>("SELECT id, name, color FROM bikes ORDER BY name");
 }
 
+/**
+ * Crée un nouveau vélo.
+ *
+ * @param name  Nom du vélo (doit être unique).
+ * @param color Couleur associée (hex), utilisée dans les tuiles et graphiques.
+ * @returns l'identifiant du vélo créé.
+ * @throws {BikeAlreadyExistsError} si un vélo porte déjà ce nom.
+ */
 export async function addBike(name: string, color: string): Promise<number> {
   const db = await getDb();
   const existing = await db.select<Bike[]>("SELECT id FROM bikes WHERE name = ?", [name]);
@@ -60,6 +76,11 @@ export async function addBike(name: string, color: string): Promise<number> {
   return result.lastInsertId as number;
 }
 
+/**
+ * Renomme un vélo et/ou change sa couleur.
+ *
+ * @throws {BikeAlreadyExistsError} si un autre vélo porte déjà le nouveau nom.
+ */
 export async function updateBike(id: number, name: string, color: string): Promise<void> {
   const db = await getDb();
   const existing = await db.select<Bike[]>("SELECT id FROM bikes WHERE name = ? AND id != ?", [name, id]);
@@ -67,6 +88,13 @@ export async function updateBike(id: number, name: string, color: string): Promi
   await db.execute("UPDATE bikes SET name = ?, color = ? WHERE id = ?", [name, color, id]);
 }
 
+/**
+ * Supprime un vélo.
+ *
+ * @throws {BikeInUseError} si des sorties référencent encore ce vélo — il
+ * faut d'abord les réassigner ou les supprimer pour éviter de perdre le lien
+ * vélo/sortie dans l'historique.
+ */
 export async function deleteBike(id: number): Promise<void> {
   const db = await getDb();
   const [{ count }] = await db.select<{ count: number }[]>(
@@ -77,6 +105,7 @@ export async function deleteBike(id: number): Promise<void> {
   await db.execute("DELETE FROM bikes WHERE id = ?", [id]);
 }
 
+/** Liste toutes les sorties (avec le nom du vélo joint), les plus récentes en premier. */
 export async function listRides(): Promise<Ride[]> {
   const db = await getDb();
   return db.select<Ride[]>(
@@ -89,6 +118,7 @@ export async function listRides(): Promise<Ride[]> {
   );
 }
 
+/** Enregistre une nouvelle sortie et retourne son identifiant. */
 export async function addRide(input: RideInput): Promise<number> {
   const db = await getDb();
   const result = await db.execute(
@@ -99,6 +129,7 @@ export async function addRide(input: RideInput): Promise<number> {
   return result.lastInsertId as number;
 }
 
+/** Met à jour tous les champs d'une sortie existante. */
 export async function updateRide(id: number, input: RideInput): Promise<void> {
   const db = await getDb();
   await db.execute(
@@ -110,11 +141,13 @@ export async function updateRide(id: number, input: RideInput): Promise<void> {
   );
 }
 
+/** Supprime une sortie. */
 export async function deleteRide(id: number): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM rides WHERE id = ?", [id]);
 }
 
+/** Calcule les totaux (distance, dénivelé, nombre de sorties, durée) toutes sorties confondues. */
 export async function getTotals(): Promise<Totals> {
   const db = await getDb();
   const [row] = await db.select<Totals[]>(
@@ -127,6 +160,11 @@ export async function getTotals(): Promise<Totals> {
   return row;
 }
 
+/**
+ * Calcule les totaux (distance, dénivelé, nombre de sorties, durée) groupés
+ * par vélo, triés par distance décroissante. N'inclut que les vélos ayant au
+ * moins une sortie enregistrée.
+ */
 export async function getByBike(): Promise<(BreakdownRow & { duration_minutes: number; color: string })[]> {
   const db = await getDb();
   return db.select<(BreakdownRow & { duration_minutes: number; color: string })[]>(
@@ -150,6 +188,10 @@ export interface YearBikeRow {
   elevation_m: number;
 }
 
+/**
+ * Calcule la distance et le dénivelé groupés par année ET par vélo (utilisé
+ * pour le graphique en barres empilées "Par année" du dashboard).
+ */
 export async function getByYearAndBike(): Promise<YearBikeRow[]> {
   const db = await getDb();
   return db.select<YearBikeRow[]>(
@@ -164,6 +206,11 @@ export async function getByYearAndBike(): Promise<YearBikeRow[]> {
   );
 }
 
+/**
+ * Calcule les totaux pour un mois donné.
+ *
+ * @param ym Mois au format `AAAA-MM` (ex. `"2026-07"`).
+ */
 export async function getStatsForMonth(ym: string): Promise<Totals> {
   const db = await getDb();
   const [row] = await db.select<Totals[]>(
@@ -178,6 +225,12 @@ export async function getStatsForMonth(ym: string): Promise<Totals> {
   return row;
 }
 
+/**
+ * Calcule les totaux d'un mois donné, groupés par vélo (utilisé pour le
+ * détail par vélo affiché sous chaque carte "Derniers mois" du dashboard).
+ *
+ * @param ym Mois au format `AAAA-MM` (ex. `"2026-07"`).
+ */
 export async function getStatsForMonthByBike(
   ym: string
 ): Promise<(BreakdownRow & { color: string })[]> {
@@ -203,6 +256,10 @@ export interface DayValue {
   ride_count: number;
 }
 
+/**
+ * Calcule la distance parcourue par jour sur une année donnée (utilisé pour
+ * le calendrier d'activité du dashboard).
+ */
 export async function getDailyDistanceForYear(year: number): Promise<DayValue[]> {
   const db = await getDb();
   return db.select<DayValue[]>(
@@ -216,6 +273,11 @@ export async function getDailyDistanceForYear(year: number): Promise<DayValue[]>
   );
 }
 
+/**
+ * Liste, du plus récent au plus ancien, tous les mois (`AAAA-MM`) contenant
+ * au moins une sortie. Utilisé pour peupler le sélecteur de mois de l'écran
+ * Sorties.
+ */
 export async function getMonthsWithRides(): Promise<string[]> {
   const db = await getDb();
   const rows = await db.select<{ ym: string }[]>(

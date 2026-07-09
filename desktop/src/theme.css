@@ -19,6 +19,8 @@
 
   --danger: #e34948;
   --danger-hover: #c53b3a;
+  --success: #006300;
+  --warning: #a8590a;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -27,32 +29,35 @@
   --shadow-elevated: 0 4px 16px rgba(11, 11, 11, 0.08), 0 1px 3px rgba(11, 11, 11, 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-hover: #232322;
-    --primary-ink: #ffffff;
-    --secondary-ink: #c3c2b7;
-    --muted-ink: #898781;
-    --gridline: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.1);
+/* Le mode sombre est pilote par l'attribut data-theme (voir ThemeProvider et
+   le script inline dans index.html), pas uniquement par la preference OS,
+   pour permettre un choix manuel clair/sombre/systeme dans les options. */
+:root[data-theme="dark"] {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-hover: #232322;
+  --primary-ink: #ffffff;
+  --secondary-ink: #c3c2b7;
+  --muted-ink: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
 
-    --accent: #3987e5;
-    --accent-hover: #5598e7;
-    --accent-pressed: #6da7ec;
-    --accent-wash: #1c3252;
+  --accent: #3987e5;
+  --accent-hover: #5598e7;
+  --accent-pressed: #6da7ec;
+  --accent-wash: #1c3252;
 
-    --series-distance: #3987e5;
-    --series-elevation: #199e70;
+  --series-distance: #3987e5;
+  --series-elevation: #199e70;
 
-    --danger: #e66767;
-    --danger-hover: #ec835a;
+  --danger: #e66767;
+  --danger-hover: #ec835a;
+  --success: #0ca30c;
+  --warning: #fbbf24;
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 8px rgba(0, 0, 0, 0.25);
-    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 8px rgba(0, 0, 0, 0.25);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -129,6 +134,13 @@ button {
   color: var(--primary-ink);
   font-weight: 600;
   border-bottom-color: var(--accent);
+}
+
+.app-nav__tab--icon {
+  margin-left: auto;
+  padding: 16px 4px;
+  display: flex;
+  align-items: center;
 }
 
 .app-page {
@@ -588,6 +600,76 @@ button {
   color: var(--danger);
   font-size: 12.5px;
   margin-top: 6px;
+}
+
+.success-text {
+  color: var(--success);
+  font-size: 12.5px;
+  margin-top: 14px;
+}
+
+.warning-text {
+  color: var(--warning);
+  font-size: 12.5px;
+  margin-top: 14px;
+}
+
+/* ---------- Options ---------- */
+
+.options-card {
+  padding: 4px 20px;
+}
+
+.options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+}
+
+.options-row + .options-row {
+  border-top: 1px solid var(--gridline);
+}
+
+.options-row__label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--primary-ink);
+}
+
+.options-row__hint {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--secondary-ink);
+  max-width: 420px;
+}
+
+.segmented {
+  display: flex;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.segmented__option {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--secondary-ink);
+  cursor: pointer;
+}
+
+.segmented__option.active {
+  background: var(--surface);
+  color: var(--primary-ink);
+  box-shadow: var(--shadow-card);
 }
 
 .empty-state {

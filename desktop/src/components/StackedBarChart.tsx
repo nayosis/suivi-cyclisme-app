@@ -9,7 +9,8 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber } from "../format";
-import { PALETTE, useIsDark } from "../palette";
+import { PALETTE } from "../palette";
+import { useTheme } from "../theme-context";
 
 interface StackedBarChartProps {
   title: string;
@@ -63,8 +64,8 @@ function makeStackedShape(bike: string, bikeNames: string[]) {
 }
 
 export function StackedBarChart({ title, unit, bikeNames, bikeColors, data }: StackedBarChartProps) {
-  const isDark = useIsDark();
-  const colors = isDark ? PALETTE.dark : PALETTE.light;
+  const { resolvedDark } = useTheme();
+  const colors = resolvedDark ? PALETTE.dark : PALETTE.light;
   const hasData = data.some((row) => bikeNames.some((b) => Number(row[b]) > 0));
 
   return (
