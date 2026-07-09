@@ -1,8 +1,11 @@
 import Database from "@tauri-apps/plugin-sql";
 import { DEFAULT_BIKE_COLOR } from "./types";
 import type { Bike, BreakdownRow, Ride, RideInput, Totals } from "./types";
+import { getCurrentDatabaseFilename } from "./database-registry";
 
 let dbPromise: Promise<Database> | null = null;
+/** Nom de fichier pour lequel `dbPromise` a été ouverte (détecte un changement de base active). */
+let loadedFilename: string | null = null;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bikes (
@@ -24,28 +27,49 @@ CREATE TABLE IF NOT EXISTS rides (
 `;
 
 /**
- * Ouvre (une seule fois, puis met en cache) la connexion à la base SQLite et
- * s'assure que le schéma est à jour. Toutes les fonctions de ce fichier
- * passent par ici — c'est le seul point d'entrée vers la base de données.
+ * Ouvre (et met en cache) la connexion vers la base SQLite **actuellement
+ * sélectionnée** (voir `database-registry.ts`) et s'assure que son schéma
+ * est à jour. Toutes les fonctions de ce fichier passent par ici — c'est le
+ * seul point d'entrée vers la base de données.
+ *
+ * Si la base active a changé depuis le dernier appel (l'utilisateur a basculé
+ * vers une autre base dans les Options), l'ancienne connexion est fermée et
+ * la nouvelle base est chargée à la place.
  */
 async function getDb(): Promise<Database> {
-  if (!dbPromise) {
-    dbPromise = (async () => {
-      const db = await Database.load("sqlite:suivi_cyclisme.db");
-      for (const stmt of SCHEMA.split(";")) {
-        const trimmed = stmt.trim();
-        if (trimmed) await db.execute(trimmed);
-      }
-      // Migration : les bases créées avant l'ajout de la couleur n'ont pas cette colonne.
-      const columns = await db.select<{ name: string }[]>("PRAGMA table_info(bikes)");
-      if (!columns.some((c) => c.name === "color")) {
-        await db.execute(
-          `ALTER TABLE bikes ADD COLUMN color TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}'`
-        );
-      }
-      return db;
-    })();
+  const filename = getCurrentDatabaseFilename();
+  if (!filename) {
+    throw new Error("Aucune base de données sélectionnée.");
   }
+  if (dbPromise && loadedFilename === filename) {
+    return dbPromise;
+  }
+
+  const previousPromise = dbPromise;
+  loadedFilename = filename;
+  dbPromise = (async () => {
+    if (previousPromise) {
+      try {
+        const previous = await previousPromise;
+        await previous.close();
+      } catch {
+        // La connexion précédente n'est peut-être déjà plus valide : sans impact.
+      }
+    }
+    const db = await Database.load(`sqlite:${filename}`);
+    for (const stmt of SCHEMA.split(";")) {
+      const trimmed = stmt.trim();
+      if (trimmed) await db.execute(trimmed);
+    }
+    // Migration : les bases créées avant l'ajout de la couleur n'ont pas cette colonne.
+    const columns = await db.select<{ name: string }[]>("PRAGMA table_info(bikes)");
+    if (!columns.some((c) => c.name === "color")) {
+      await db.execute(
+        `ALTER TABLE bikes ADD COLUMN color TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}'`
+      );
+    }
+    return db;
+  })();
   return dbPromise;
 }
 
@@ -111,7 +135,7 @@ export async function listRides(): Promise<Ride[]> {
   return db.select<Ride[]>(
     `SELECT rides.id, rides.date, rides.name, rides.duration_minutes,
             rides.distance_km, rides.elevation_m, rides.comment,
-            rides.bike_id, bikes.name AS bike_name
+            rides.bike_id, bikes.name AS bike_name, bikes.color AS bike_color
      FROM rides
      JOIN bikes ON bikes.id = rides.bike_id
      ORDER BY rides.date DESC, rides.id DESC`
@@ -284,4 +308,18 @@ export async function getMonthsWithRides(): Promise<string[]> {
     `SELECT DISTINCT substr(date, 1, 7) as ym FROM rides ORDER BY ym DESC`
   );
   return rows.map((r) => r.ym);
+}
+
+/**
+ * Supprime **définitivement** toutes les sorties puis tous les vélos —
+ * remet l'application dans son état initial (base vide).
+ *
+ * Irréversible : à n'appeler qu'après confirmation explicite de
+ * l'utilisateur et sauvegarde préalable (voir
+ * {@link "./data-transfer".exportBackupToDownloads}).
+ */
+export async function deleteAllData(): Promise<void> {
+  const database = await getDb();
+  await database.execute("DELETE FROM rides");
+  await database.execute("DELETE FROM bikes");
 }

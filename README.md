@@ -34,6 +34,10 @@ Organisation :
   modales de formulaire, calendrier)
 - `db.ts` — toute la couche d'accès aux données (SQL), c'est le seul endroit
   qui parle à la base
+- `database-registry.ts` — gestion des **bases de données nommées**
+  (création, liste, bascule) ; le registre et la base active sont stockés en
+  `localStorage`, `db.ts` recharge automatiquement la bonne base SQLite quand
+  elle change
 - `palette.ts` / `theme.css` — couleurs et thème partagés entre les
   composants React et les graphiques
 
@@ -54,12 +58,19 @@ Organisation :
 
 ### Où vivent les données une fois l'app lancée ?
 
-`%APPDATA%\<identifier>\suivi_cyclisme.db`, où `<identifier>` est la valeur du
-champ `identifier` dans `src-tauri/tauri.conf.json` (actuellement
+Chaque base de données nommée est un fichier SQLite séparé dans
+`%APPDATA%\<identifier>\` (où `<identifier>` est la valeur du champ
+`identifier` dans `src-tauri/tauri.conf.json`, actuellement
 `com.vincentgouadon.suivicyclisme`). Changer cet identifiant fait pointer
-l'app vers un nouveau dossier vide — la base existante n'est pas supprimée,
-juste "orpheline" ; il faut alors ré-importer un export JSON pour récupérer
-ses données.
+l'app vers un nouveau dossier vide — les bases existantes ne sont pas
+supprimées, juste "orphelines" ; il faut alors ré-importer un export JSON
+pour récupérer les données.
+
+Au premier lancement (aucune base connue), l'application demande un nom et
+crée la première base. D'autres bases peuvent être créées et sélectionnées
+depuis **Options → Base de données** — utile par exemple pour séparer
+plusieurs cyclistes ou garder un jeu de données de test à part de ses
+vraies sorties.
 
 ### Sauvegarde / transfert des données
 

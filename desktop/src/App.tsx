@@ -1,18 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DashboardPage } from "./pages/DashboardPage";
 import { RidesPage } from "./pages/RidesPage";
 import { BikesPage } from "./pages/BikesPage";
 import { OptionsPage } from "./pages/OptionsPage";
+import { WelcomeSetup } from "./pages/WelcomeSetup";
 import { GearIcon } from "./components/GearIcon";
+import { getCurrentDatabaseFilename, migrateLegacyDatabaseIfNeeded } from "./database-registry";
 
 type Tab = "dashboard" | "rides" | "bikes" | "options";
+type DbState = "checking" | "needs-setup" | "ready";
 
 export default function App() {
+  const [dbState, setDbState] = useState<DbState>("checking");
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refreshKey, setRefreshKey] = useState(0);
 
+  useEffect(() => {
+    (async () => {
+      await migrateLegacyDatabaseIfNeeded();
+      setDbState(getCurrentDatabaseFilename() ? "ready" : "needs-setup");
+    })();
+  }, []);
+
   function bumpRefresh() {
     setRefreshKey((k) => k + 1);
+  }
+
+  if (dbState === "checking") return null;
+
+  if (dbState === "needs-setup") {
+    return <WelcomeSetup onDone={() => setDbState("ready")} />;
   }
 
   return (

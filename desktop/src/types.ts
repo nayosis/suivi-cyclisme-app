@@ -16,6 +16,7 @@ export interface Ride {
   comment: string | null;
   bike_id: number;
   bike_name: string;
+  bike_color: string;
 }
 
 export interface RideInput {

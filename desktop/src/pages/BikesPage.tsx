@@ -3,19 +3,31 @@ import * as db from "../db";
 import { BikeInUseError } from "../db";
 import type { Bike } from "../types";
 import { BikeFormModal } from "../components/BikeFormModal";
+import { formatNumber } from "../format";
 
 interface BikesPageProps {
   refreshKey: number;
   onDataChanged: () => void;
 }
 
+interface BikeStats {
+  distance_km: number;
+  elevation_m: number;
+  ride_count: number;
+}
+
+const EMPTY_STATS: BikeStats = { distance_km: 0, elevation_m: 0, ride_count: 0 };
+
 export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
   const [bikes, setBikes] = useState<Bike[]>([]);
+  const [statsByBike, setStatsByBike] = useState<Map<string, BikeStats>>(new Map());
   const [editingBike, setEditingBike] = useState<Bike | null>(null);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
 
   async function refresh() {
-    setBikes(await db.listBikes());
+    const [bikeList, stats] = await Promise.all([db.listBikes(), db.getByBike()]);
+    setBikes(bikeList);
+    setStatsByBike(new Map(stats.map((s) => [s.label, s])));
   }
 
   useEffect(() => {
@@ -70,29 +82,38 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
             <thead>
               <tr>
                 <th>Nom</th>
+                <th>Distance</th>
+                <th>Dénivelé+</th>
+                <th>Sorties</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {bikes.map((b) => (
-                <tr key={b.id}>
-                  <td>
-                    <span className="bike-color-dot" style={{ background: b.color }} />
-                    {b.name}
-                  </td>
-                  <td className="actions-cell">
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setEditingBike(b);
-                        setModal("edit");
-                      }}
-                    >
-                      Modifier
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {bikes.map((b) => {
+                const stats = statsByBike.get(b.name) ?? EMPTY_STATS;
+                return (
+                  <tr key={b.id}>
+                    <td>
+                      <span className="bike-color-dot" style={{ background: b.color }} />
+                      {b.name}
+                    </td>
+                    <td>{formatNumber(stats.distance_km)} km</td>
+                    <td>{formatNumber(stats.elevation_m)} m</td>
+                    <td>{formatNumber(stats.ride_count)}</td>
+                    <td className="actions-cell">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setEditingBike(b);
+                          setModal("edit");
+                        }}
+                      >
+                        Modifier
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -104,11 +125,11 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
           initialName={editingBike.name}
           initialColor={editingBike.color}
           onSave={handleEdit}
-          onDelete={handleDelete}
           onClose={() => {
             setModal(null);
             setEditingBike(null);
           }}
+          onDelete={handleDelete}
         />
       )}
     </div>

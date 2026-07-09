@@ -1,6 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
+import { ResetDataModal } from "../components/ResetDataModal";
+import { CreateDatabaseModal } from "../components/CreateDatabaseModal";
+import {
+  createDatabase,
+  getCurrentDatabaseFilename,
+  listDatabases,
+  switchDatabase,
+  type DatabaseEntry,
+} from "../database-registry";
 
 interface OptionsPageProps {
   onDataChanged: () => void;
@@ -19,6 +28,15 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
     type: "success" | "warning" | "error";
     text: string;
   } | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [createDbModalOpen, setCreateDbModalOpen] = useState(false);
+  const [databases, setDatabases] = useState<DatabaseEntry[]>([]);
+  const [currentDbFilename, setCurrentDbFilename] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDatabases(listDatabases());
+    setCurrentDbFilename(getCurrentDatabaseFilename());
+  }, []);
 
   async function handleExport() {
     setBusy("export");
@@ -61,6 +79,14 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
     }
   }
 
+  function handleSwitchDatabase(filename: string) {
+    if (filename === currentDbFilename) return;
+    switchDatabase(filename);
+    setCurrentDbFilename(filename);
+    setMessage(null);
+    onDataChanged();
+  }
+
   return (
     <div>
       <div className="section-title">Apparence</div>
@@ -81,6 +107,40 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="section-title">Base de données</div>
+      <div className="card options-card">
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Base active</div>
+            <div className="options-row__hint">
+              Basculez vers une autre base de données créée précédemment.
+            </div>
+          </div>
+          <select
+            className="select-input"
+            value={currentDbFilename ?? ""}
+            onChange={(e) => handleSwitchDatabase(e.target.value)}
+          >
+            {databases.map((d) => (
+              <option key={d.filename} value={d.filename}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Nouvelle base</div>
+            <div className="options-row__hint">
+              Crée une base de données vide, séparée de celle-ci, et bascule dessus.
+            </div>
+          </div>
+          <button className="btn btn-secondary" onClick={() => setCreateDbModalOpen(true)}>
+            Créer…
+          </button>
         </div>
       </div>
 
@@ -111,10 +171,53 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
           </button>
         </div>
 
-        {message && (
-          <div className={`${message.type}-text`}>{message.text}</div>
-        )}
+        {message && <div className={`${message.type}-text`}>{message.text}</div>}
       </div>
+
+      <div className="section-title section-title--danger">Zone dangereuse</div>
+      <div className="card options-card options-card--danger">
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Réinitialiser toutes les données</div>
+            <div className="options-row__hint">
+              Supprime définitivement tous les vélos et toutes les sorties de la base
+              active, pour repartir de zéro. Une sauvegarde JSON vous sera demandée
+              juste avant.
+            </div>
+          </div>
+          <button className="btn btn-danger" onClick={() => setResetModalOpen(true)}>
+            Réinitialiser…
+          </button>
+        </div>
+      </div>
+
+      {resetModalOpen && (
+        <ResetDataModal
+          onClose={() => setResetModalOpen(false)}
+          onDone={() => {
+            setResetModalOpen(false);
+            setMessage({
+              type: "success",
+              text: "Toutes les données ont été supprimées après sauvegarde. L'application repart de zéro.",
+            });
+            onDataChanged();
+          }}
+        />
+      )}
+
+      {createDbModalOpen && (
+        <CreateDatabaseModal
+          onClose={() => setCreateDbModalOpen(false)}
+          onCreate={(name) => {
+            const entry = createDatabase(name);
+            setDatabases(listDatabases());
+            setCurrentDbFilename(entry.filename);
+            setCreateDbModalOpen(false);
+            setMessage({ type: "success", text: `Base « ${entry.name} » créée et sélectionnée.` });
+            onDataChanged();
+          }}
+        />
+      )}
     </div>
   );
 }

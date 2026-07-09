@@ -48,3 +48,10 @@ export function addMonths(ym: string, delta: number): string {
   const d = new Date(y, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
+
+/** Calcule et formate la vitesse moyenne (km/h) d'une sortie. */
+export function formatSpeed(distanceKm: number, durationMinutes: number): string {
+  if (durationMinutes <= 0) return "–";
+  const kmh = distanceKm / (durationMinutes / 60);
+  return `${formatNumber(kmh, 1)} km/h`;
+}

@@ -58,18 +58,15 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
       setTotals(t);
       setByBike(bikes);
       setByYearAndBike(yearBike);
-      const showBreakdown = bikes.length >= 2;
       setMonthStats(
         lastFourYm.map((ym, i) => ({
           label: formatMonthLabel(ym),
           totals: monthTotalsArr[i],
-          breakdown: showBreakdown
-            ? monthByBikeArr[i].map((b) => ({
-                label: b.label,
-                value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)}`,
-                color: b.color,
-              }))
-            : [],
+          breakdown: monthByBikeArr[i].map((b) => ({
+            label: b.label,
+            value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)}`,
+            color: b.color,
+          })),
         }))
       );
     })();
@@ -90,10 +87,9 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
 
   const bikeNames = byBike.map((b) => b.label);
   const bikeColors = Object.fromEntries(byBike.map((b) => [b.label, b.color]));
-  const showBreakdown = byBike.length >= 2;
 
   function breakdownFor(pick: (b: BikeTotal) => string): BreakdownRowData[] | undefined {
-    if (!showBreakdown) return undefined;
+    if (byBike.length === 0) return undefined;
     return byBike.map((b) => ({ label: b.label, value: pick(b), color: b.color }));
   }
 
