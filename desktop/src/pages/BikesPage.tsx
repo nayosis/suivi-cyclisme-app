@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import * as db from "../db";
 import { BikeInUseError } from "../db";
+import * as maint from "../maintenance-db";
 import type { Bike } from "../types";
 import { BikeFormModal } from "../components/BikeFormModal";
-import { formatNumber } from "../format";
+import { formatDate, formatNumber } from "../format";
 
 interface BikesPageProps {
   refreshKey: number;
@@ -34,16 +35,17 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
     refresh();
   }, [refreshKey]);
 
-  async function handleAdd(name: string, color: string) {
-    await db.addBike(name, color);
+  async function handleAdd(name: string, color: string, purchaseDate: string, purchaseKm: number) {
+    const bikeId = await db.addBike(name, color, purchaseDate, purchaseKm);
+    await maint.instantiateMandatoryPartsForBike(bikeId);
     setModal(null);
     await refresh();
     onDataChanged();
   }
 
-  async function handleEdit(name: string, color: string) {
+  async function handleEdit(name: string, color: string, purchaseDate: string, purchaseKm: number) {
     if (!editingBike) return;
-    await db.updateBike(editingBike.id, name, color);
+    await db.updateBike(editingBike.id, name, color, purchaseDate, purchaseKm);
     setModal(null);
     setEditingBike(null);
     await refresh();
@@ -82,6 +84,8 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
             <thead>
               <tr>
                 <th>Nom</th>
+                <th>Acquisition</th>
+                <th>Km à l'achat</th>
                 <th>Distance</th>
                 <th>Dénivelé+</th>
                 <th>Sorties</th>
@@ -97,6 +101,8 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
                       <span className="bike-color-dot" style={{ background: b.color }} />
                       {b.name}
                     </td>
+                    <td>{b.purchase_date ? formatDate(b.purchase_date) : "—"}</td>
+                    <td>{formatNumber(b.purchase_km)} km</td>
                     <td>{formatNumber(stats.distance_km)} km</td>
                     <td>{formatNumber(stats.elevation_m)} m</td>
                     <td>{formatNumber(stats.ride_count)}</td>
@@ -124,6 +130,8 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
         <BikeFormModal
           initialName={editingBike.name}
           initialColor={editingBike.color}
+          initialPurchaseDate={editingBike.purchase_date}
+          initialPurchaseKm={editingBike.purchase_km}
           onSave={handleEdit}
           onClose={() => {
             setModal(null);

@@ -1,6 +1,8 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import * as db from "./db";
+import { instantiateMandatoryPartsForBike } from "./maintenance-db";
+import { todayIso } from "./format";
 import { DEFAULT_BIKE_COLOR } from "./types";
 
 /**
@@ -15,6 +17,8 @@ const CURRENT_FORMAT_VERSION = 1;
 interface ExportedBike {
   name: string;
   color: string;
+  purchase_date: string | null;
+  purchase_km: number | null;
 }
 
 interface ExportedRide {
@@ -61,7 +65,7 @@ export async function buildExportPayload(): Promise<string> {
   const payload: ExportPayload = {
     version: CURRENT_FORMAT_VERSION,
     exported_at: new Date().toISOString(),
-    bikes: bikes.map((b) => ({ name: b.name, color: b.color })),
+    bikes: bikes.map((b) => ({ name: b.name, color: b.color, purchase_date: b.purchase_date, purchase_km: b.purchase_km })),
     rides: rides.map((r) => ({
       date: r.date,
       name: r.name,
@@ -143,7 +147,13 @@ export async function importFromPayload(json: string): Promise<ImportSummary> {
 
   for (const bike of parsed.bikes) {
     if (!bike?.name || bikeIdByName.has(bike.name)) continue;
-    const id = await db.addBike(bike.name, bike.color ?? DEFAULT_BIKE_COLOR);
+    const id = await db.addBike(
+      bike.name,
+      bike.color ?? DEFAULT_BIKE_COLOR,
+      bike.purchase_date ?? todayIso(),
+      bike.purchase_km ?? 0
+    );
+    await instantiateMandatoryPartsForBike(id);
     bikeIdByName.set(bike.name, id);
     summary.bikesAdded++;
   }

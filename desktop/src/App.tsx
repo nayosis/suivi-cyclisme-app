@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { DashboardPage } from "./pages/DashboardPage";
 import { RidesPage } from "./pages/RidesPage";
 import { BikesPage } from "./pages/BikesPage";
+import { MaintenancePage } from "./pages/MaintenancePage";
 import { OptionsPage } from "./pages/OptionsPage";
 import { WelcomeSetup } from "./pages/WelcomeSetup";
 import { GearIcon } from "./components/GearIcon";
 import { getCurrentDatabaseFilename, migrateLegacyDatabaseIfNeeded } from "./database-registry";
 
-type Tab = "dashboard" | "rides" | "bikes" | "options";
+type Tab = "dashboard" | "rides" | "bikes" | "maintenance" | "options";
 type DbState = "checking" | "needs-setup" | "ready";
 
 export default function App() {
@@ -55,6 +56,12 @@ export default function App() {
           Vélos
         </button>
         <button
+          className={`app-nav__tab ${tab === "maintenance" ? "active" : ""}`}
+          onClick={() => setTab("maintenance")}
+        >
+          Entretien
+        </button>
+        <button
           className={`app-nav__tab app-nav__tab--icon ${tab === "options" ? "active" : ""}`}
           onClick={() => setTab("options")}
           title="Options"
@@ -64,7 +71,7 @@ export default function App() {
         </button>
       </nav>
 
-      {/* Les 4 pages restent montées en permanence (affichage bascule via CSS)
+      {/* Les pages restent montées en permanence (affichage bascule via CSS)
           pour que chacune conserve son état (filtres, sélections...) au changement d'onglet. */}
       <div className="app-page" style={{ display: tab === "dashboard" ? "block" : "none" }}>
         <DashboardPage refreshKey={refreshKey} />
@@ -74,6 +81,9 @@ export default function App() {
       </div>
       <div className="app-page" style={{ display: tab === "bikes" ? "block" : "none" }}>
         <BikesPage refreshKey={refreshKey} onDataChanged={bumpRefresh} />
+      </div>
+      <div className="app-page" style={{ display: tab === "maintenance" ? "block" : "none" }}>
+        <MaintenancePage refreshKey={refreshKey} onDataChanged={bumpRefresh} />
       </div>
       <div className="app-page" style={{ display: tab === "options" ? "block" : "none" }}>
         <OptionsPage onDataChanged={bumpRefresh} />

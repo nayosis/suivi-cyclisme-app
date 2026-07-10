@@ -39,6 +39,12 @@ export function currentYearMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Retourne la date du jour au format ISO `AAAA-MM-JJ`. */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /**
  * Décale un mois `AAAA-MM` de `delta` mois (positif ou négatif).
  * Ex. `addMonths("2026-01", -1)` → `"2025-12"`.

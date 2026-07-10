@@ -9,9 +9,11 @@ let loadedFilename: string | null = null;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bikes (
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE,
-    color TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}'
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL UNIQUE,
+    color         TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}',
+    purchase_date TEXT,
+    purchase_km   REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS rides (
@@ -24,19 +26,82 @@ CREATE TABLE IF NOT EXISTS rides (
     comment          TEXT,
     bike_id          INTEGER NOT NULL REFERENCES bikes(id)
 );
+
+-- Catalogue des emplacements du velo (partage par tous les velos), positionnes
+-- sur le schema affiche dans l'onglet Entretien. mandatory = un exemplaire est
+-- automatiquement cree pour chaque velo (existant ou futur) des que cet
+-- emplacement existe.
+CREATE TABLE IF NOT EXISTS bike_part_defs (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    x         REAL NOT NULL,
+    y         REAL NOT NULL,
+    mandatory INTEGER NOT NULL DEFAULT 0
+);
+
+-- Un exemplaire physique de piece. N'a pas d'emplacement fixe : celui-ci est
+-- porte par chaque periode de montage (part_mounts), pour permettre de
+-- deplacer un meme exemplaire d'un emplacement a un autre au fil du temps
+-- (ex. un pneu passe de la roue avant a la roue arriere).
+CREATE TABLE IF NOT EXISTS part_instances (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    purchase_cost REAL,
+    purchase_date TEXT,
+    retired_date  TEXT
+);
+
+-- Etiquette libre (libelle + couleur) pour filtrer les pieces, ex. "Route",
+-- "Occasion", "Shimano". Independante des emplacements.
+CREATE TABLE IF NOT EXISTS part_tags (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name  TEXT NOT NULL UNIQUE,
+    color TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}'
+);
+
+CREATE TABLE IF NOT EXISTS part_instance_tags (
+    part_instance_id INTEGER NOT NULL REFERENCES part_instances(id),
+    tag_id           INTEGER NOT NULL REFERENCES part_tags(id),
+    PRIMARY KEY (part_instance_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS maintenances (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    bike_id INTEGER NOT NULL REFERENCES bikes(id),
+    date    TEXT NOT NULL,
+    comment TEXT,
+    cost    REAL
+);
+
+-- Une periode de montage d'un exemplaire de piece sur un emplacement d'un
+-- velo. unmounted_at NULL = encore monte aujourd'hui. Chaque bout
+-- (pose/depose) est rattache a la maintenance qui l'a declenche,
+-- independamment l'un de l'autre. NULL si la pose/depose est directe
+-- (ex. instanciation automatique d'une piece d'origine, sans maintenance).
+CREATE TABLE IF NOT EXISTS part_mounts (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_instance_id          INTEGER NOT NULL REFERENCES part_instances(id),
+    bike_id                   INTEGER NOT NULL REFERENCES bikes(id),
+    bike_part_def_id          INTEGER NOT NULL REFERENCES bike_part_defs(id),
+    mounted_at                TEXT NOT NULL,
+    unmounted_at              TEXT,
+    mounted_by_maintenance_id INTEGER REFERENCES maintenances(id),
+    removed_by_maintenance_id INTEGER REFERENCES maintenances(id)
+);
 `;
 
 /**
  * Ouvre (et met en cache) la connexion vers la base SQLite **actuellement
  * sélectionnée** (voir `database-registry.ts`) et s'assure que son schéma
- * est à jour. Toutes les fonctions de ce fichier passent par ici — c'est le
- * seul point d'entrée vers la base de données.
+ * est à jour. C'est le seul point d'entrée vers la base de données — les
+ * autres modules de données (ex. `maintenance-db.ts`) l'utilisent aussi
+ * plutôt que de gérer leur propre connexion.
  *
  * Si la base active a changé depuis le dernier appel (l'utilisateur a basculé
  * vers une autre base dans les Options), l'ancienne connexion est fermée et
  * la nouvelle base est chargée à la place.
  */
-async function getDb(): Promise<Database> {
+export async function getDb(): Promise<Database> {
   const filename = getCurrentDatabaseFilename();
   if (!filename) {
     throw new Error("Aucune base de données sélectionnée.");
@@ -57,16 +122,41 @@ async function getDb(): Promise<Database> {
       }
     }
     const db = await Database.load(`sqlite:${filename}`);
-    for (const stmt of SCHEMA.split(";")) {
-      const trimmed = stmt.trim();
-      if (trimmed) await db.execute(trimmed);
+    async function applySchema() {
+      // Les commentaires SQL (`-- ...`) sont retirés ligne à ligne avant de
+      // découper sur `;` : un `;` qui apparaîtrait dans le texte d'un
+      // commentaire (ponctuation française "mot ; mot") couperait sinon une
+      // instruction en deux au mauvais endroit.
+      const withoutComments = SCHEMA.split("\n")
+        .map((line) => (line.trim().startsWith("--") ? "" : line))
+        .join("\n");
+      for (const stmt of withoutComments.split(";")) {
+        const trimmed = stmt.trim();
+        if (trimmed) await db.execute(trimmed);
+      }
     }
+    await applySchema();
     // Migration : les bases créées avant l'ajout de la couleur n'ont pas cette colonne.
     const columns = await db.select<{ name: string }[]>("PRAGMA table_info(bikes)");
     if (!columns.some((c) => c.name === "color")) {
       await db.execute(
         `ALTER TABLE bikes ADD COLUMN color TEXT NOT NULL DEFAULT '${DEFAULT_BIKE_COLOR}'`
       );
+    }
+    // Migration : ajout de la date d'acquisition du vélo. La fonctionnalité
+    // maintenance est encore expérimentale, donc on profite de cette montée
+    // de version pour repartir d'un catalogue d'emplacements propre plutôt
+    // que d'écrire une migration de données pour des données de test.
+    if (!columns.some((c) => c.name === "purchase_date")) {
+      await db.execute("ALTER TABLE bikes ADD COLUMN purchase_date TEXT");
+      for (const table of ["part_mounts", "maintenances", "part_instances", "part_types", "bike_part_defs"]) {
+        await db.execute(`DROP TABLE IF EXISTS ${table}`);
+      }
+      await applySchema();
+    }
+    // Migration : les bases créées avant l'ajout du kilométrage à l'achat n'ont pas cette colonne.
+    if (!columns.some((c) => c.name === "purchase_km")) {
+      await db.execute("ALTER TABLE bikes ADD COLUMN purchase_km REAL NOT NULL DEFAULT 0");
     }
     return db;
   })();
@@ -81,35 +171,57 @@ export class BikeInUseError extends Error {}
 /** Liste tous les vélos, triés par nom. */
 export async function listBikes(): Promise<Bike[]> {
   const db = await getDb();
-  return db.select<Bike[]>("SELECT id, name, color FROM bikes ORDER BY name");
+  return db.select<Bike[]>("SELECT id, name, color, purchase_date, purchase_km FROM bikes ORDER BY name");
 }
 
 /**
  * Crée un nouveau vélo.
  *
- * @param name  Nom du vélo (doit être unique).
- * @param color Couleur associée (hex), utilisée dans les tuiles et graphiques.
+ * @param name         Nom du vélo (doit être unique).
+ * @param color        Couleur associée (hex), utilisée dans les tuiles et graphiques.
+ * @param purchaseDate Date d'acquisition (sert de date de montage par défaut à ses pièces d'origine).
+ * @param purchaseKm   Kilométrage du vélo à l'achat (un vélo d'occasion ne part pas forcément de 0).
  * @returns l'identifiant du vélo créé.
  * @throws {BikeAlreadyExistsError} si un vélo porte déjà ce nom.
  */
-export async function addBike(name: string, color: string): Promise<number> {
+export async function addBike(
+  name: string,
+  color: string,
+  purchaseDate: string,
+  purchaseKm: number
+): Promise<number> {
   const db = await getDb();
   const existing = await db.select<Bike[]>("SELECT id FROM bikes WHERE name = ?", [name]);
   if (existing.length > 0) throw new BikeAlreadyExistsError(name);
-  const result = await db.execute("INSERT INTO bikes (name, color) VALUES (?, ?)", [name, color]);
+  const result = await db.execute(
+    "INSERT INTO bikes (name, color, purchase_date, purchase_km) VALUES (?, ?, ?, ?)",
+    [name, color, purchaseDate, purchaseKm]
+  );
   return result.lastInsertId as number;
 }
 
 /**
- * Renomme un vélo et/ou change sa couleur.
+ * Renomme un vélo et/ou change sa couleur, sa date d'acquisition et/ou son kilométrage à l'achat.
  *
  * @throws {BikeAlreadyExistsError} si un autre vélo porte déjà le nouveau nom.
  */
-export async function updateBike(id: number, name: string, color: string): Promise<void> {
+export async function updateBike(
+  id: number,
+  name: string,
+  color: string,
+  purchaseDate: string,
+  purchaseKm: number
+): Promise<void> {
   const db = await getDb();
   const existing = await db.select<Bike[]>("SELECT id FROM bikes WHERE name = ? AND id != ?", [name, id]);
   if (existing.length > 0) throw new BikeAlreadyExistsError(name);
-  await db.execute("UPDATE bikes SET name = ?, color = ? WHERE id = ?", [name, color, id]);
+  await db.execute("UPDATE bikes SET name = ?, color = ?, purchase_date = ?, purchase_km = ? WHERE id = ?", [
+    name,
+    color,
+    purchaseDate,
+    purchaseKm,
+    id,
+  ]);
 }
 
 /**

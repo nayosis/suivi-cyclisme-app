@@ -509,6 +509,30 @@ button {
   vertical-align: middle;
 }
 
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 0 4px;
+}
+
+.tag-pill {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: var(--page);
+  color: var(--primary-ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tag-pill:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
 .table-container {
   max-height: calc(100vh - 260px);
   overflow-y: auto;
@@ -599,6 +623,92 @@ button {
 
 .field-row .field {
   flex: 1;
+}
+
+/* ---------- Opérations de maintenance (installer/désinstaller) ---------- */
+
+.op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: var(--page);
+}
+
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.op-row--wrap {
+  flex-wrap: wrap;
+}
+
+.op-row__label {
+  flex: 1;
+  color: var(--primary-ink);
+}
+
+.op-row__new-fields {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.op-row__new-fields select,
+.op-row__new-fields input {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--primary-ink);
+  font-size: 12.5px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.op-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.op-badge--install {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.op-badge--uninstall {
+  background: rgba(227, 73, 72, 0.12);
+  color: var(--danger);
+}
+
+.op-add-row {
+  display: flex;
+  gap: 6px;
+}
+
+.op-add-row select {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--primary-ink);
+  font-size: 12.5px;
+}
+
+.op-empty {
+  font-size: 12px;
+  color: var(--muted-ink);
+  padding: 4px 2px;
 }
 
 .modal-actions {
@@ -932,4 +1042,431 @@ button {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ---------- Page pleine largeur (formulaire de maintenance) ---------- */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.btn-back {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--primary-ink);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-back:hover {
+  background: var(--surface-hover);
+}
+
+.page-header__title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--primary-ink);
+}
+
+.maintenance-form-card {
+  padding: 22px 24px 20px;
+  max-width: 760px;
+}
+
+.maintenance-form-card .field-row .field {
+  min-width: 0;
+}
+
+.markdown-field__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.markdown-field__header label {
+  margin-bottom: 0;
+}
+
+.markdown-preview {
+  min-height: 168px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--page);
+  font-size: 13.5px;
+  color: var(--primary-ink);
+  overflow-y: auto;
+}
+
+.markdown-preview :is(h1, h2, h3) {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.markdown-preview p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.markdown-preview code {
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12.5px;
+}
+
+/* ---------- Sélecteur de vélo (vue maintenance découpée par vélo) ---------- */
+
+.bike-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.bike-pill {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: var(--surface);
+  color: var(--primary-ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bike-pill:hover {
+  background: var(--surface-hover);
+}
+
+.bike-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.maintenance-comment-cell {
+  max-width: 420px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- Emplacements (schéma de vélo interactif) ---------- */
+
+.parts-locations {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.parts-locations__main {
+  flex: 3;
+  min-width: 0;
+}
+
+.parts-locations__panel {
+  flex: 2;
+  min-width: 260px;
+  padding: 18px 20px;
+  align-self: stretch;
+}
+
+.bike-diagram {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #f4f4f2;
+}
+
+.bike-diagram--editable {
+  cursor: crosshair;
+}
+
+.bike-diagram__image {
+  width: 100%;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.bike-diagram__marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.bike-diagram__marker--filled {
+  background: var(--accent);
+}
+
+.bike-diagram__marker--empty {
+  background: var(--muted-ink);
+  border-style: dashed;
+}
+
+.bike-diagram__marker--install {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(46, 160, 67, 0.25);
+}
+
+.bike-diagram__marker--uninstall {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(227, 73, 72, 0.2);
+}
+
+.bike-diagram__marker--pending {
+  background: var(--success);
+  cursor: default;
+  pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(46, 160, 67, 0.25);
+}
+
+.bike-diagram__marker-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--primary-ink);
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.bike-diagram__marker:hover .bike-diagram__marker-label,
+.bike-diagram__marker:focus .bike-diagram__marker-label {
+  opacity: 1;
+}
+
+.reposition-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--primary-ink);
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.op-row__slot-label {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary-ink);
+  padding: 5px 8px;
+}
+
+.op-add-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* ---------- Tags de pièces ---------- */
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--secondary-ink);
+  margin: 0 8px 0 0;
+  white-space: nowrap;
+}
+
+.tag-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+
+.tag-chip--toggle {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: var(--surface);
+  color: var(--secondary-ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0;
+}
+
+.tag-chip--toggle:hover {
+  background: var(--surface-hover);
+}
+
+.tag-chip--toggle.active {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.tag-toggle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Filtres de la vue Pièces ---------- */
+
+.toolbar--parts-filters {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.parts-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---------- Récapitulatif de maintenance ---------- */
+
+.maintenance-summary-cell {
+  min-width: 220px;
+  font-size: 12px;
+}
+
+.maintenance-summary-line {
+  color: var(--secondary-ink);
+  white-space: nowrap;
+}
+
+.maintenance-summary-line + .maintenance-summary-line {
+  margin-top: 3px;
+}
+
+.maintenance-summary-line strong {
+  color: var(--primary-ink);
+}
+
+/* ---------- Frise chronologique (historique d'une pièce) ---------- */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.timeline__node {
+  display: flex;
+  gap: 12px;
+}
+
+.timeline__marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.timeline__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.timeline__line {
+  flex: 1;
+  width: 2px;
+  min-height: 22px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.timeline__content {
+  padding-bottom: 18px;
+}
+
+.timeline__date {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--secondary-ink);
+  margin-bottom: 3px;
+  letter-spacing: 0.01em;
+}
+
+.timeline__label {
+  font-size: 13px;
+  color: var(--primary-ink);
+  line-height: 1.4;
+}
+
+.timeline__label--purchase {
+  font-weight: 600;
+}
+
+.timeline__label--mount {
+  color: var(--success);
+}
+
+.timeline__label--unmount {
+  color: var(--danger);
+}
+
+.timeline__label--retired {
+  font-weight: 600;
+  color: var(--danger);
 }
