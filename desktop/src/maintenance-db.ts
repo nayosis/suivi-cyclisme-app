@@ -35,19 +35,39 @@ async function assertAllBikesHavePurchaseDate(): Promise<void> {
 
 // ---------- Emplacements (catalogue partagé, positionnés sur le schéma) ----------
 
-/** Liste tous les emplacements du vélo, triés par nom. */
+/** Liste tous les emplacements du vélo, triés par nom, avec leurs tags de pièces autorisés. */
 export async function listBikePartDefs(): Promise<BikePartDef[]> {
   const db = await getDb();
   const rows = await db.select<{ id: number; name: string; x: number; y: number; mandatory: number }[]>(
     "SELECT id, name, x, y, mandatory FROM bike_part_defs ORDER BY name"
   );
-  return rows.map((r) => ({ ...r, mandatory: !!r.mandatory }));
+  const tagRows = await db.select<{ bike_part_def_id: number; tag_id: number }[]>(
+    "SELECT bike_part_def_id, tag_id FROM bike_part_def_tags"
+  );
+  const tagIdsByDef = new Map<number, number[]>();
+  for (const r of tagRows) {
+    const list = tagIdsByDef.get(r.bike_part_def_id) ?? [];
+    list.push(r.tag_id);
+    tagIdsByDef.set(r.bike_part_def_id, list);
+  }
+  return rows.map((r) => ({ ...r, mandatory: !!r.mandatory, tagIds: tagIdsByDef.get(r.id) ?? [] }));
+}
+
+/** Remplace les tags de pièces autorisés d'un emplacement par `tagIds`. */
+async function setBikePartDefTags(defId: number, tagIds: number[]): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM bike_part_def_tags WHERE bike_part_def_id = ?", [defId]);
+  for (const tagId of tagIds) {
+    await db.execute("INSERT INTO bike_part_def_tags (bike_part_def_id, tag_id) VALUES (?, ?)", [defId, tagId]);
+  }
 }
 
 /**
- * Crée un nouvel emplacement à la position `(x, y)` (en % du schéma). Si
- * `mandatory` est vrai, un exemplaire "d'origine" est immédiatement créé et
- * installé sur ce nouvel emplacement pour chaque vélo existant.
+ * Crée un nouvel emplacement à la position `(x, y)` (en % du schéma), avec
+ * les tags de pièces jugés compatibles (purement indicatif, voir
+ * {@link BikePartDef.tagIds}). Si `mandatory` est vrai, un exemplaire
+ * "d'origine" est immédiatement créé et installé sur ce nouvel emplacement
+ * pour chaque vélo existant.
  * @throws {BikesMissingPurchaseDateError} si au moins un vélo n'a pas de date d'acquisition.
  * @throws {BikePartDefAlreadyExistsError}
  */
@@ -55,7 +75,8 @@ export async function addBikePartDef(
   name: string,
   x: number,
   y: number,
-  mandatory: boolean
+  mandatory: boolean,
+  tagIds: number[] = []
 ): Promise<number> {
   await assertAllBikesHavePurchaseDate();
   const db = await getDb();
@@ -66,6 +87,7 @@ export async function addBikePartDef(
     [name, x, y, mandatory ? 1 : 0]
   );
   const defId = result.lastInsertId as number;
+  await setBikePartDefTags(defId, tagIds);
   if (mandatory) {
     const bikes = await db.select<{ id: number }[]>("SELECT id FROM bikes");
     for (const bike of bikes) {
@@ -76,9 +98,10 @@ export async function addBikePartDef(
 }
 
 /**
- * Modifie le nom, la position et/ou le caractère obligatoire d'un
- * emplacement. Si `mandatory` passe de faux à vrai, les vélos n'ayant encore
- * aucun exemplaire à cet emplacement en reçoivent un automatiquement.
+ * Modifie le nom, la position, le caractère obligatoire et/ou les tags de
+ * pièces autorisés d'un emplacement. Si `mandatory` passe de faux à vrai,
+ * les vélos n'ayant encore aucun exemplaire à cet emplacement en reçoivent
+ * un automatiquement.
  * @throws {BikesMissingPurchaseDateError} si `mandatory` passe à vrai alors qu'au moins un vélo n'a pas de date d'acquisition.
  * @throws {BikePartDefAlreadyExistsError}
  */
@@ -87,7 +110,8 @@ export async function updateBikePartDef(
   name: string,
   x: number,
   y: number,
-  mandatory: boolean
+  mandatory: boolean,
+  tagIds: number[]
 ): Promise<void> {
   const db = await getDb();
   const existing = await db.select<{ id: number }[]>(
@@ -110,6 +134,7 @@ export async function updateBikePartDef(
     mandatory ? 1 : 0,
     id,
   ]);
+  await setBikePartDefTags(id, tagIds);
   if (becomingMandatory) {
     await instantiateMandatoryDefForMissingBikes(id, name);
   }
@@ -123,6 +148,7 @@ export async function deleteBikePartDef(id: number): Promise<void> {
     [id]
   );
   if (count > 0) throw new BikePartDefInUseError(String(id));
+  await db.execute("DELETE FROM bike_part_def_tags WHERE bike_part_def_id = ?", [id]);
   await db.execute("DELETE FROM bike_part_defs WHERE id = ?", [id]);
 }
 
@@ -190,10 +216,30 @@ const PART_INSTANCE_SELECT = `
   FROM part_instances pi
 `;
 
+/** Attache à chaque exemplaire la liste de ses tags. */
+async function attachInstanceTags(instances: Omit<PartInstance, "tags">[]): Promise<PartInstance[]> {
+  if (instances.length === 0) return [];
+  const db = await getDb();
+  const tagRows = await db.select<{ part_instance_id: number; id: number; name: string; color: string }[]>(
+    `SELECT pit.part_instance_id, pt.id, pt.name, pt.color
+     FROM part_instance_tags pit
+     JOIN part_tags pt ON pt.id = pit.tag_id
+     ORDER BY pt.name`
+  );
+  const tagsByInstance = new Map<number, PartTag[]>();
+  for (const row of tagRows) {
+    const list = tagsByInstance.get(row.part_instance_id) ?? [];
+    list.push({ id: row.id, name: row.name, color: row.color });
+    tagsByInstance.set(row.part_instance_id, list);
+  }
+  return instances.map((i) => ({ ...i, tags: tagsByInstance.get(i.id) ?? [] }));
+}
+
 /** Liste tous les exemplaires de pièces, triés par nom. */
 export async function listPartInstances(): Promise<PartInstance[]> {
   const db = await getDb();
-  return db.select<PartInstance[]>(`${PART_INSTANCE_SELECT} ORDER BY pi.name`);
+  const rows = await db.select<Omit<PartInstance, "tags">[]>(`${PART_INSTANCE_SELECT} ORDER BY pi.name`);
+  return attachInstanceTags(rows);
 }
 
 /**
@@ -203,12 +249,13 @@ export async function listPartInstances(): Promise<PartInstance[]> {
  */
 export async function listAvailablePartInstances(): Promise<PartInstance[]> {
   const db = await getDb();
-  return db.select<PartInstance[]>(
+  const rows = await db.select<Omit<PartInstance, "tags">[]>(
     `${PART_INSTANCE_SELECT}
      WHERE pi.retired_date IS NULL
        AND pi.id NOT IN (SELECT part_instance_id FROM part_mounts WHERE unmounted_at IS NULL)
      ORDER BY pi.name`
   );
+  return attachInstanceTags(rows);
 }
 
 /** Crée un nouvel exemplaire de pièce (pas encore installé nulle part), avec ses tags éventuels. */
@@ -291,10 +338,11 @@ export async function updatePartTag(id: number, name: string, color: string): Pr
   await db.execute("UPDATE part_tags SET name = ?, color = ? WHERE id = ?", [name, color, id]);
 }
 
-/** Supprime un tag (et le retire de tous les exemplaires qui le portaient). */
+/** Supprime un tag (et le retire de tous les exemplaires et emplacements qui le portaient). */
 export async function deletePartTag(id: number): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM part_instance_tags WHERE tag_id = ?", [id]);
+  await db.execute("DELETE FROM bike_part_def_tags WHERE tag_id = ?", [id]);
   await db.execute("DELETE FROM part_tags WHERE id = ?", [id]);
 }
 

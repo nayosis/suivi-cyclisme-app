@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS part_instance_tags (
     PRIMARY KEY (part_instance_id, tag_id)
 );
 
+-- Tags de pieces "autorises" sur un emplacement (ex. Roue avant -> tags Roue,
+-- Support), utilise pour pre-filtrer les pieces proposees a l'installation
+-- dans la saisie de maintenance. Purement indicatif : un emplacement sans
+-- tag ne filtre rien, et le filtre reste desactivable au cas par cas.
+CREATE TABLE IF NOT EXISTS bike_part_def_tags (
+    bike_part_def_id INTEGER NOT NULL REFERENCES bike_part_defs(id),
+    tag_id           INTEGER NOT NULL REFERENCES part_tags(id),
+    PRIMARY KEY (bike_part_def_id, tag_id)
+);
+
 CREATE TABLE IF NOT EXISTS maintenances (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     bike_id INTEGER NOT NULL REFERENCES bikes(id),

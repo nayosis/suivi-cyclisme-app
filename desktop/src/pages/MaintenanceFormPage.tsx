@@ -3,7 +3,7 @@ import * as maint from "../maintenance-db";
 import { errorMessage, formatDate, todayIso } from "../format";
 import { renderMarkdown } from "../markdown";
 import { BikeDiagram } from "../components/BikeDiagram";
-import type { Bike, BikePartDef, Maintenance, MaintenanceInput, PartInstance, PartMount } from "../types";
+import type { Bike, BikePartDef, Maintenance, MaintenanceInput, PartInstance, PartMount, PartTag } from "../types";
 
 interface MaintenanceFormPageProps {
   bikes: Bike[];
@@ -60,6 +60,7 @@ export function MaintenanceFormPage({
   const [saving, setSaving] = useState(false);
 
   const [defs, setDefs] = useState<BikePartDef[]>([]);
+  const [partTags, setPartTags] = useState<PartTag[]>([]);
   const [availableInstances, setAvailableInstances] = useState<PartInstance[]>([]);
   const [openMounts, setOpenMounts] = useState<PartMount[]>([]);
   const [existingInstalled, setExistingInstalled] = useState<PartMount[]>([]);
@@ -73,15 +74,18 @@ export function MaintenanceFormPage({
   const [pickInstance, setPickInstance] = useState("");
   const [pickName, setPickName] = useState("");
   const [pickCost, setPickCost] = useState("");
+  const [tagFilterEnabled, setTagFilterEnabled] = useState(true);
   const [panelError, setPanelError] = useState<string | null>(null);
 
   async function refreshPickers() {
-    const [d, available, open] = await Promise.all([
+    const [d, tags, available, open] = await Promise.all([
       maint.listBikePartDefs(),
+      maint.listPartTags(),
       maint.listAvailablePartInstances(),
       bikeId ? maint.getOpenMountsForBike(bikeId) : Promise.resolve([]),
     ]);
     setDefs(d);
+    setPartTags(tags);
     setAvailableInstances(available);
     setOpenMounts(open);
   }
@@ -101,6 +105,7 @@ export function MaintenanceFormPage({
     setPickInstance("");
     setPickName("");
     setPickCost("");
+    setTagFilterEnabled(true);
     setPanelError(null);
   }, [activeDefId]);
 
@@ -234,6 +239,14 @@ export function MaintenanceFormPage({
 
   const activeDef = defs.find((d) => d.id === activeDefId) ?? null;
   const activeState = activeDefId != null ? getSlotState(activeDefId) : null;
+  const activeDefTags = (activeDef?.tagIds ?? [])
+    .map((id) => partTags.find((t) => t.id === id))
+    .filter((t): t is PartTag => t != null);
+  const hasTagFilter = activeDefTags.length > 0;
+  const tagFilteredInstances =
+    hasTagFilter && tagFilterEnabled
+      ? selectableInstances.filter((i) => i.tags.some((t) => activeDefTags.some((at) => at.id === t.id)))
+      : selectableInstances;
 
   return (
     <div>
@@ -315,11 +328,24 @@ export function MaintenanceFormPage({
                 ) : picking ? (
                   <div>
                     <div className="section-title" style={{ marginTop: 0 }}>{activeDef.name}</div>
+                    {hasTagFilter && (
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={tagFilterEnabled}
+                          onChange={(e) => setTagFilterEnabled(e.target.checked)}
+                        />
+                        Filtrer par tags compatibles ({activeDefTags.map((t) => t.name).join(", ")})
+                      </label>
+                    )}
+                    {hasTagFilter && tagFilterEnabled && tagFilteredInstances.length === 0 && selectableInstances.length > 0 && (
+                      <div className="op-empty">Aucune pièce disponible avec ces tags. Décochez le filtre pour tout voir.</div>
+                    )}
                     <div className="field">
                       <label htmlFor="pick-instance">Exemplaire</label>
                       <select id="pick-instance" value={pickInstance} onChange={(e) => setPickInstance(e.target.value)}>
                         <option value="">Choisir…</option>
-                        {selectableInstances.map((i) => (
+                        {tagFilteredInstances.map((i) => (
                           <option key={i.id} value={i.id}>
                             {i.name}
                           </option>

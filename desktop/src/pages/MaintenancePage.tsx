@@ -478,6 +478,7 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
             purchase_cost: editingInstance.purchase_cost,
             purchase_date: editingInstance.purchase_date,
             retired_date: editingInstance.retired_date,
+            tags: editingInstance.tags,
           }}
           onSave={handleEditInstance}
           onDelete={handleDeleteInstance}

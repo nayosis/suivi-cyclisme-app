@@ -65,6 +65,13 @@ export interface BikePartDef {
   x: number;
   y: number;
   mandatory: boolean;
+  /**
+   * Tags de pièces jugés compatibles avec cet emplacement (ex. "Roue avant"
+   * → tags "Roue", "Support"). Purement indicatif : sert à pré-filtrer les
+   * pièces proposées à l'installation dans la saisie de maintenance, mais
+   * n'empêche rien — un emplacement sans tag ne filtre simplement pas.
+   */
+  tagIds: number[];
 }
 
 /**
@@ -81,6 +88,7 @@ export interface PartInstance {
   purchase_date: string | null;
   /** Date de mise au rebut de l'exemplaire (fin de vie), `null` s'il est toujours en service. */
   retired_date: string | null;
+  tags: PartTag[];
 }
 
 /** Étiquette libre (libellé + couleur) qu'on peut accrocher à un ou plusieurs exemplaires, pour les filtrer. */

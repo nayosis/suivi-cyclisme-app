@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import * as maint from "../maintenance-db";
 import { BikePartDefAlreadyExistsError, BikePartDefInUseError, BikesMissingPurchaseDateError } from "../maintenance-db";
 import { errorMessage } from "../format";
-import type { BikePartDef } from "../types";
+import type { BikePartDef, PartTag } from "../types";
 import { BikeDiagram } from "./BikeDiagram";
 
 interface PartsLocationsViewProps {
@@ -32,15 +32,19 @@ function describeError(err: unknown): string {
  */
 export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocationsViewProps) {
   const [defs, setDefs] = useState<BikePartDef[]>([]);
+  const [allTags, setAllTags] = useState<PartTag[]>([]);
   const [repositioningDefId, setRepositioningDefId] = useState<number | null>(null);
   const [detail, setDetail] = useState<Detail>({ kind: "none" });
   const [panelError, setPanelError] = useState<string | null>(null);
 
   const [formName, setFormName] = useState("");
   const [formMandatory, setFormMandatory] = useState(false);
+  const [formTagIds, setFormTagIds] = useState<Set<number>>(new Set());
 
   async function refreshCatalog() {
-    setDefs(await maint.listBikePartDefs());
+    const [d, tags] = await Promise.all([maint.listBikePartDefs(), maint.listPartTags()]);
+    setDefs(d);
+    setAllTags(tags);
   }
 
   useEffect(() => {
@@ -52,11 +56,22 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
     if (detail.kind === "new-def") {
       setFormName("");
       setFormMandatory(false);
+      setFormTagIds(new Set());
     } else if (detail.kind === "edit-def") {
       setFormName(detail.def.name);
       setFormMandatory(detail.def.mandatory);
+      setFormTagIds(new Set(detail.def.tagIds));
     }
   }, [detail]);
+
+  function toggleFormTag(id: number) {
+    setFormTagIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function handleMarkerClick(def: BikePartDef) {
     if (repositioningDefId != null) return;
@@ -68,7 +83,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       const def = defs.find((d) => d.id === repositioningDefId);
       if (def) {
         try {
-          await maint.updateBikePartDef(def.id, def.name, x, y, def.mandatory);
+          await maint.updateBikePartDef(def.id, def.name, x, y, def.mandatory, def.tagIds);
           await refreshCatalog();
           onDataChanged();
         } catch (err) {
@@ -88,7 +103,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       return;
     }
     try {
-      await maint.addBikePartDef(formName.trim(), x, y, formMandatory);
+      await maint.addBikePartDef(formName.trim(), x, y, formMandatory, Array.from(formTagIds));
       setDetail({ kind: "none" });
       await refreshCatalog();
       onDataChanged();
@@ -103,7 +118,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       return;
     }
     try {
-      await maint.updateBikePartDef(def.id, formName.trim(), def.x, def.y, formMandatory);
+      await maint.updateBikePartDef(def.id, formName.trim(), def.x, def.y, formMandatory, Array.from(formTagIds));
       setDetail({ kind: "none" });
       setRepositioningDefId(null);
       await refreshCatalog();
@@ -181,6 +196,24 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
                 />
                 Obligatoire (chaque vélo en reçoit un exemplaire automatiquement)
               </label>
+              {allTags.length > 0 && (
+                <div className="field">
+                  <label>Tags de pièces compatibles (facultatif)</label>
+                  <div className="tag-toggle-list">
+                    {allTags.map((tag) => (
+                      <button
+                        type="button"
+                        key={tag.id}
+                        className={`tag-chip tag-chip--toggle ${formTagIds.has(tag.id) ? "active" : ""}`}
+                        onClick={() => toggleFormTag(tag.id)}
+                      >
+                        <span className="tag-chip__dot" style={{ background: tag.color }} />
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {panelError && <div className="error-text">{panelError}</div>}
               <div className="modal-actions">
                 <div />
@@ -211,6 +244,24 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
                 />
                 Obligatoire (chaque vélo en reçoit un exemplaire automatiquement)
               </label>
+              {allTags.length > 0 && (
+                <div className="field">
+                  <label>Tags de pièces compatibles (facultatif)</label>
+                  <div className="tag-toggle-list">
+                    {allTags.map((tag) => (
+                      <button
+                        type="button"
+                        key={tag.id}
+                        className={`tag-chip tag-chip--toggle ${formTagIds.has(tag.id) ? "active" : ""}`}
+                        onClick={() => toggleFormTag(tag.id)}
+                      >
+                        <span className="tag-chip__dot" style={{ background: tag.color }} />
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
