@@ -7,7 +7,7 @@ import { type BreakdownRowData } from "../components/BreakdownList";
 import { StackedBarChart } from "../components/StackedBarChart";
 import { MonthCard } from "../components/MonthCard";
 import { CalendarHeatmap } from "../components/CalendarHeatmap";
-import { addMonths, currentYearMonth, formatMonthLabel, formatNumber } from "../format";
+import { MONTH_NAMES, formatNumber } from "../format";
 
 interface BikeTotal {
   label: string;
@@ -18,11 +18,9 @@ interface BikeTotal {
   duration_minutes: number;
 }
 
-function pivotByYear(
-  rows: YearBikeRow[],
-  bikeNames: string[],
-  metric: "distance_km" | "elevation_m"
-): Record<string, string | number>[] {
+type YearMetric = "distance_km" | "elevation_m" | "ride_count" | "duration_minutes";
+
+function pivotByYear(rows: YearBikeRow[], bikeNames: string[], metric: YearMetric): Record<string, string | number>[] {
   const years = Array.from(new Set(rows.map((r) => r.year))).sort();
   return years.map((year) => {
     const rec: Record<string, string | number> = { label: year };
@@ -30,6 +28,15 @@ function pivotByYear(
       const match = rows.find((r) => r.year === year && r.bike_name === bike);
       rec[bike] = match ? match[metric] : 0;
     }
+    return rec;
+  });
+}
+
+/** Convertit en heures les valeurs (en minutes) d'un jeu de données déjà pivoté par année. */
+function toHours(rows: Record<string, string | number>[], bikeNames: string[]): Record<string, string | number>[] {
+  return rows.map((row) => {
+    const rec: Record<string, string | number> = { label: row.label };
+    for (const bike of bikeNames) rec[bike] = Number(row[bike]) / 60;
     return rec;
   });
 }
@@ -46,34 +53,34 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => {
     (async () => {
-      const currentYm = currentYearMonth();
-      const lastFourYm = [0, -1, -2, -3].map((delta) => addMonths(currentYm, delta));
-      const [t, bikes, yearBike, monthTotalsArr, monthByBikeArr] = await Promise.all([
-        db.getTotals(),
-        db.getByBike(),
-        db.getByYearAndBike(),
-        Promise.all(lastFourYm.map((ym) => db.getStatsForMonth(ym))),
-        Promise.all(lastFourYm.map((ym) => db.getStatsForMonthByBike(ym))),
-      ]);
+      const [t, bikes, yearBike] = await Promise.all([db.getTotals(), db.getByBike(), db.getByYearAndBike()]);
       setTotals(t);
       setByBike(bikes);
       setByYearAndBike(yearBike);
+    })();
+  }, [refreshKey]);
+
+  useEffect(() => {
+    (async () => {
+      const months = Array.from({ length: 12 }, (_, i) => `${calendarYear}-${String(i + 1).padStart(2, "0")}`);
+      const [daily, monthTotalsArr, monthByBikeArr] = await Promise.all([
+        db.getDailyDistanceForYear(calendarYear),
+        Promise.all(months.map((ym) => db.getStatsForMonth(ym))),
+        Promise.all(months.map((ym) => db.getStatsForMonthByBike(ym))),
+      ]);
+      setDailyData(daily);
       setMonthStats(
-        lastFourYm.map((ym, i) => ({
-          label: formatMonthLabel(ym),
+        months.map((_ym, i) => ({
+          label: MONTH_NAMES[i],
           totals: monthTotalsArr[i],
           breakdown: monthByBikeArr[i].map((b) => ({
             label: b.label,
-            value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)}`,
+            value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)} · ${formatNumber(b.duration_minutes / 60, 1)} h`,
             color: b.color,
           })),
         }))
       );
     })();
-  }, [refreshKey]);
-
-  useEffect(() => {
-    db.getDailyDistanceForYear(calendarYear).then(setDailyData);
   }, [calendarYear, refreshKey]);
 
   const availableYears = useMemo(() => {
@@ -134,24 +141,24 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
           bikeColors={bikeColors}
           data={pivotByYear(byYearAndBike, bikeNames, "elevation_m")}
         />
-      </div>
-
-      <div className="section-title">Derniers mois</div>
-      <div className="month-cards-row">
-        {monthStats.map((m) => (
-          <MonthCard
-            key={m.label}
-            label={m.label}
-            distanceKm={m.totals.distance_km}
-            elevationM={m.totals.elevation_m}
-            rideCount={m.totals.ride_count}
-            breakdown={m.breakdown}
-          />
-        ))}
+        <StackedBarChart
+          title="Nombre de sorties par année"
+          unit="sorties"
+          bikeNames={bikeNames}
+          bikeColors={bikeColors}
+          data={pivotByYear(byYearAndBike, bikeNames, "ride_count")}
+        />
+        <StackedBarChart
+          title="Temps par année"
+          unit="h"
+          bikeNames={bikeNames}
+          bikeColors={bikeColors}
+          data={toHours(pivotByYear(byYearAndBike, bikeNames, "duration_minutes"), bikeNames)}
+        />
       </div>
 
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        Calendrier d'activité
+        Détail par mois
         <select
           value={calendarYear}
           onChange={(e) => setCalendarYear(Number(e.target.value))}
@@ -172,7 +179,23 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
           ))}
         </select>
       </div>
-      <CalendarHeatmap year={calendarYear} data={dailyData} />
+      <div className="month-cards-row">
+        {monthStats.map((m) => (
+          <MonthCard
+            key={m.label}
+            label={m.label}
+            distanceKm={m.totals.distance_km}
+            elevationM={m.totals.elevation_m}
+            rideCount={m.totals.ride_count}
+            durationMinutes={m.totals.duration_minutes}
+            breakdown={m.breakdown}
+          />
+        ))}
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <CalendarHeatmap year={calendarYear} data={dailyData} />
+      </div>
     </div>
   );
 }

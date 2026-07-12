@@ -41,7 +41,7 @@ export default function App() {
           className={`app-nav__tab ${tab === "dashboard" ? "active" : ""}`}
           onClick={() => setTab("dashboard")}
         >
-          Dashboard
+          Tableau de bord
         </button>
         <button
           className={`app-nav__tab ${tab === "rides" ? "active" : ""}`}

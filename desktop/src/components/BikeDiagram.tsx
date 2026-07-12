@@ -6,6 +6,8 @@ interface BikeDiagramProps {
   defs: BikePartDef[];
   /** Style visuel de chaque marqueur (nom de variante → suffixe de classe `bike-diagram__marker--<variante>`). */
   markerVariant?: (def: BikePartDef) => string;
+  /** Marque le marqueur comme actuellement sélectionné (anneau distinct), en plus de sa variante. */
+  isSelected?: (def: BikePartDef) => boolean;
   onMarkerClick?: (def: BikePartDef) => void;
   /** En mode édition, un clic sur une zone vide du schéma déclenche `onImageClick(x%, y%)`. */
   editable?: boolean;
@@ -18,7 +20,7 @@ interface BikeDiagramProps {
  * Schéma de vélo partagé, avec des marqueurs positionnés en pourcentage
  * (0-100) de sa largeur/hauteur — indépendant de la taille d'affichage.
  */
-export function BikeDiagram({ defs, markerVariant, onMarkerClick, editable, onImageClick, pendingPoint }: BikeDiagramProps) {
+export function BikeDiagram({ defs, markerVariant, isSelected, onMarkerClick, editable, onImageClick, pendingPoint }: BikeDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   function handleContainerClick(e: MouseEvent<HTMLDivElement>) {
@@ -40,7 +42,9 @@ export function BikeDiagram({ defs, markerVariant, onMarkerClick, editable, onIm
         <button
           key={def.id}
           type="button"
-          className={`bike-diagram__marker bike-diagram__marker--${markerVariant ? markerVariant(def) : "filled"}`}
+          className={`bike-diagram__marker bike-diagram__marker--${markerVariant ? markerVariant(def) : "filled"} ${
+            isSelected?.(def) ? "bike-diagram__marker--selected" : ""
+          }`}
           style={{ left: `${def.x}%`, top: `${def.y}%` }}
           title={def.name}
           onClick={(e) => {

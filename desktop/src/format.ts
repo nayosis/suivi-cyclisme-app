@@ -22,7 +22,7 @@ export function formatDate(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-const MONTH_NAMES = [
+export const MONTH_NAMES = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ];

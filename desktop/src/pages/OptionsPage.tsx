@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
+import { useHeatmapColor } from "../heatmap-color-context";
 import { errorMessage } from "../format";
 import { ResetDataModal } from "../components/ResetDataModal";
 import { CreateDatabaseModal } from "../components/CreateDatabaseModal";
@@ -24,6 +25,9 @@ const THEME_LABELS: Record<ThemeMode, string> = {
   dark: "Sombre",
 };
 
+/** Couleur d'accent par défaut de chaque thème (voir theme.css) — sert de valeur affichée dans le sélecteur tant qu'aucune couleur personnalisée n'est choisie. */
+const ACCENT_FALLBACK = { light: "#2a78d6", dark: "#3987e5" };
+
 interface StatusMessage {
   type: "success" | "warning" | "error";
   text: string;
@@ -35,7 +39,9 @@ function StatusText({ message }: { message: StatusMessage | null }) {
 }
 
 export function OptionsPage({ onDataChanged }: OptionsPageProps) {
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, resolvedDark } = useTheme();
+  const { color: heatmapColor, setColor: setHeatmapColor } = useHeatmapColor();
+  const heatmapColorValue = heatmapColor ?? (resolvedDark ? ACCENT_FALLBACK.dark : ACCENT_FALLBACK.light);
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [dataMessage, setDataMessage] = useState<StatusMessage | null>(null);
   const [dbMessage, setDbMessage] = useState<StatusMessage | null>(null);
@@ -154,6 +160,33 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
                 {THEME_LABELS[m]}
               </button>
             ))}
+          </div>
+        </div>
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Couleur du calendrier d'activité</div>
+            <div className="options-row__hint">
+              Personnalisez la couleur des cases du calendrier d'activité (Tableau de
+              bord). Par défaut, il suit la couleur d'accent du thème.
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="color"
+              value={heatmapColorValue}
+              onChange={(e) => setHeatmapColor(e.target.value)}
+              className="color-input"
+              aria-label="Couleur du calendrier d'activité"
+            />
+            {heatmapColor && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setHeatmapColor(null)}
+              >
+                Réinitialiser
+              </button>
+            )}
           </div>
         </div>
       </div>

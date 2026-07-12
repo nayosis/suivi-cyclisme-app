@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { DayValue } from "../db";
 import { formatNumber } from "../format";
+import { useHeatmapColor } from "../heatmap-color-context";
 
 interface CalendarHeatmapProps {
   year: number;
   data: DayValue[];
 }
 
-const WEEKDAY_LABELS = ["", "Lun", "", "Mer", "", "Ven", ""];
+const WEEKDAY_LABELS = ["Lun", "", "Mer", "", "Ven", "", ""];
 const MONTH_NAMES_SHORT = [
   "Janv", "Fév", "Mars", "Avr", "Mai", "Juin",
   "Juil", "Août", "Sept", "Oct", "Nov", "Déc",
@@ -29,16 +30,21 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function quantile(sorted: number[], q: number): number {
-  if (sorted.length === 0) return 0;
-  const pos = (sorted.length - 1) * q;
-  const base = Math.floor(pos);
-  const rest = pos - base;
-  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+/** Bornes hautes (km) des paliers 1 à 3 de l'échelle de couleur — palier 0 = 0 km, palier 3 = au-delà de LEVEL_THRESHOLDS_KM[2]. */
+const LEVEL_THRESHOLDS_KM = [75, 150];
+const LEVEL_LEGEND = ["0 km", "1 à 75 km", "76 à 150 km", "Plus de 150 km"];
+
+function levelFor(value: number): number {
+  if (value <= 0) return 0;
+  if (value <= LEVEL_THRESHOLDS_KM[0]) return 1;
+  if (value <= LEVEL_THRESHOLDS_KM[1]) return 2;
+  return 3;
 }
 
 export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
   const [hovered, setHovered] = useState<{ x: number; y: number; cell: Cell } | null>(null);
+  const { color } = useHeatmapColor();
+  const cardStyle = color ? ({ "--heatmap-color": color } as CSSProperties) : undefined;
 
   const byDate = useMemo(() => {
     const map = new Map<string, DayValue>();
@@ -46,7 +52,7 @@ export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
     return map;
   }, [data]);
 
-  const { weeks, cells, monthLabels, thresholds } = useMemo(() => {
+  const { weeks, cells, monthLabels } = useMemo(() => {
     const start = new Date(year, 0, 1);
     const end = new Date(year, 11, 31);
     const startDow = (start.getDay() + 6) % 7; // 0 = lundi
@@ -78,14 +84,6 @@ export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
 
     const totalWeeks = week + (allCells[allCells.length - 1]?.weekday === 6 ? 0 : 1);
 
-    const nonZero = allCells
-      .filter((c) => c.inYear && c.value > 0)
-      .map((c) => c.value)
-      .sort((a, b) => a - b);
-    const t1 = quantile(nonZero, 0.33);
-    const t2 = quantile(nonZero, 0.66);
-    const t3 = quantile(nonZero, 0.9);
-
     const labels: { month: string; week: number }[] = [];
     let lastMonth = -1;
     for (const c of allCells) {
@@ -95,19 +93,11 @@ export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
       }
     }
 
-    return { weeks: totalWeeks, cells: allCells, monthLabels: labels, thresholds: [t1, t2, t3] };
+    return { weeks: totalWeeks, cells: allCells, monthLabels: labels };
   }, [year, byDate]);
 
-  function levelFor(value: number): number {
-    if (value <= 0) return 0;
-    if (value < thresholds[0]) return 1;
-    if (value < thresholds[1]) return 2;
-    if (value < thresholds[2]) return 3;
-    return 4;
-  }
-
   return (
-    <div className="card chart-card calendar-heatmap-card">
+    <div className="card chart-card calendar-heatmap-card" style={cardStyle}>
       <div className="chart-card__title">Calendrier d'activité {year}</div>
       <div className="calendar-heatmap">
         <div className="calendar-heatmap__side">
@@ -156,11 +146,12 @@ export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
       </div>
 
       <div className="calendar-heatmap__legend">
-        <span>Moins</span>
-        {[0, 1, 2, 3, 4].map((lvl) => (
-          <div key={lvl} className={`heat-cell heat-${lvl}`} />
+        {LEVEL_LEGEND.map((label, lvl) => (
+          <div key={lvl} className="calendar-heatmap__legend-item">
+            <div className={`heat-cell heat-${lvl}`} title={label} />
+            <span>{label}</span>
+          </div>
         ))}
-        <span>Plus</span>
       </div>
 
       {hovered && (

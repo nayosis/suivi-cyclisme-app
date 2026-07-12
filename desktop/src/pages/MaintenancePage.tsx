@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import * as db from "../db";
 import * as maint from "../maintenance-db";
 import { PartInstanceInUseError } from "../maintenance-db";
-import type { Bike, Maintenance, PartInstanceStats, PartMount, PartTag } from "../types";
+import type { Bike, BikePartDef, Maintenance, PartInstanceStats, PartMount, PartTag, SlotMount } from "../types";
 import { MaintenanceFormPage } from "./MaintenanceFormPage";
+import { PartDetailPage } from "./PartDetailPage";
 import { PartInstanceFormModal } from "../components/PartInstanceFormModal";
 import { PartTagFormModal } from "../components/PartTagFormModal";
-import { PartHistoryModal } from "../components/PartHistoryModal";
 import { PartsLocationsView } from "../components/PartsLocationsView";
-import { formatDate, formatNumber } from "../format";
+import { BikeDiagram } from "../components/BikeDiagram";
+import { SlotHistoryTimeline } from "../components/SlotHistoryTimeline";
+import { formatDate, formatNumber, todayIso } from "../format";
 
 interface MaintenancePageProps {
   refreshKey: number;
@@ -19,10 +21,17 @@ type View = "maintenances" | "parts" | "locations";
 type MaintenanceSubView = "list" | "form";
 type StatusFilter = "all" | "mounted" | "unmounted";
 
+interface SummaryPart {
+  id: number;
+  name: string;
+}
+
 interface MaintenanceSummaryLine {
   slot: string;
-  before: string;
-  after: string;
+  /** Pièce retirée, `null` si l'emplacement était vide avant (pose seule). */
+  before: SummaryPart | null;
+  /** Pièce posée, `null` si l'emplacement redevient vide (retrait seul). */
+  after: SummaryPart | null;
 }
 
 /** Récapitulatif « avant → après » par emplacement touché par une maintenance donnée. */
@@ -40,11 +49,20 @@ function buildMaintenanceSummary(maintenanceId: number, mounts: PartMount[]): Ma
       const rem = removed.get(defId);
       return {
         slot: inst?.bike_part_def_name ?? rem?.bike_part_def_name ?? "",
-        before: rem?.part_instance_name ?? "x",
-        after: inst?.part_instance_name ?? "x",
+        before: rem ? { id: rem.part_instance_id, name: rem.part_instance_name } : null,
+        after: inst ? { id: inst.part_instance_id, name: inst.part_instance_name } : null,
       };
     })
     .sort((a, b) => a.slot.localeCompare(b.slot));
+}
+
+/** Une maintenance a-t-elle installé et/ou retiré une pièce sur cet emplacement précis ? */
+function maintenanceTouchesDef(maintenanceId: number, defId: number, mounts: PartMount[]): boolean {
+  return mounts.some(
+    (m) =>
+      m.bike_part_def_id === defId &&
+      (m.mounted_by_maintenance_id === maintenanceId || m.removed_by_maintenance_id === maintenanceId)
+  );
 }
 
 export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePageProps) {
@@ -56,10 +74,14 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
   const [allMounts, setAllMounts] = useState<PartMount[]>([]);
   const [partStats, setPartStats] = useState<PartInstanceStats[]>([]);
   const [partTags, setPartTags] = useState<PartTag[]>([]);
+  const [defs, setDefs] = useState<BikePartDef[]>([]);
+  const [selectedDefId, setSelectedDefId] = useState<number | null>(null);
+  const [slotHistory, setSlotHistory] = useState<SlotMount[] | null>(null);
+  const [mileageByMaintenance, setMileageByMaintenance] = useState<Map<number, number>>(new Map());
 
   const [editingMaintenance, setEditingMaintenance] = useState<Maintenance | null>(null);
-  const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null);
-  const [historyInstanceId, setHistoryInstanceId] = useState<number | null>(null);
+  /** Fiche pièce actuellement affichée en plein écran (accessible depuis n'importe quel [id] de pièce dans l'app). */
+  const [viewingPartId, setViewingPartId] = useState<number | null>(null);
   const [addingInstance, setAddingInstance] = useState(false);
   const [tagModal, setTagModal] = useState<"add" | "edit" | null>(null);
   const [editingTag, setEditingTag] = useState<PartTag | null>(null);
@@ -67,6 +89,8 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [bikeFilterId, setBikeFilterId] = useState<number | null>(null);
   const [tagFilterIds, setTagFilterIds] = useState<Set<number>>(new Set());
+  const [showRetired, setShowRetired] = useState(false);
+  const [partSearch, setPartSearch] = useState("");
 
   async function refreshBikesAndParts() {
     const [b, stats, tags] = await Promise.all([db.listBikes(), maint.getPartInstanceStats(), maint.listPartTags()]);
@@ -84,14 +108,31 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
   }, [refreshKey]);
 
   useEffect(() => {
+    maint.listBikePartDefs().then(setDefs);
+  }, [refreshKey]);
+
+  useEffect(() => {
+    setSelectedDefId(null);
     if (selectedBikeId == null) {
       setMaintenances([]);
       setAllMounts([]);
+      setMileageByMaintenance(new Map());
       return;
     }
     maint.listMaintenances(selectedBikeId).then(setMaintenances);
     maint.getAllMountsForBike(selectedBikeId).then(setAllMounts);
+    maint.getBikeMileageAtMaintenances(selectedBikeId).then((rows) => {
+      setMileageByMaintenance(new Map(rows.map((r) => [r.maintenance_id, r.mileage_km])));
+    });
   }, [selectedBikeId, refreshKey]);
+
+  useEffect(() => {
+    if (selectedBikeId == null || selectedDefId == null) {
+      setSlotHistory(null);
+      return;
+    }
+    maint.getSlotHistory(selectedBikeId, selectedDefId).then(setSlotHistory);
+  }, [selectedBikeId, selectedDefId, refreshKey]);
 
   async function handleMaintenanceSaved() {
     setMaintSubView("list");
@@ -105,8 +146,7 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
     await handleMaintenanceSaved();
   }
 
-  const editingInstance = partStats.find((p) => p.part_instance_id === editingInstanceId) ?? null;
-  const historyInstance = partStats.find((p) => p.part_instance_id === historyInstanceId) ?? null;
+  const viewingPart = partStats.find((p) => p.part_instance_id === viewingPartId) ?? null;
 
   async function handleAddInstance(
     name: string,
@@ -127,17 +167,17 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
     retiredDate: string | null,
     tagIds: number[]
   ) {
-    if (!editingInstanceId) return;
-    await maint.updatePartInstance(editingInstanceId, name, purchaseCost, purchaseDate, retiredDate, tagIds);
-    setEditingInstanceId(null);
+    if (!viewingPartId) return;
+    await maint.updatePartInstance(viewingPartId, name, purchaseCost, purchaseDate, retiredDate, tagIds);
+    setViewingPartId(null);
     await refreshBikesAndParts();
   }
 
   async function handleDeleteInstance() {
-    if (!editingInstanceId) return;
+    if (!viewingPartId) return;
     try {
-      await maint.deletePartInstance(editingInstanceId);
-      setEditingInstanceId(null);
+      await maint.deletePartInstance(viewingPartId);
+      setViewingPartId(null);
       await refreshBikesAndParts();
     } catch (err) {
       if (err instanceof PartInstanceInUseError) {
@@ -184,12 +224,32 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
   }
 
   const filteredStats = partStats.filter((p) => {
+    if (!showRetired && p.retired_date && p.retired_date <= todayIso()) return false;
     if (statusFilter === "mounted" && !p.currentMount) return false;
     if (statusFilter === "unmounted" && p.currentMount) return false;
     if (bikeFilterId != null && p.currentMount?.bike_id !== bikeFilterId) return false;
     if (tagFilterIds.size > 0 && !p.tags.some((t) => tagFilterIds.has(t.id))) return false;
+    if (partSearch.trim() && !p.name.toLowerCase().includes(partSearch.trim().toLowerCase())) return false;
     return true;
   });
+
+  const selectedDef = defs.find((d) => d.id === selectedDefId) ?? null;
+  const visibleMaintenances =
+    selectedDefId == null
+      ? maintenances
+      : maintenances.filter((m) => maintenanceTouchesDef(m.id, selectedDefId, allMounts));
+
+  if (viewingPart) {
+    return (
+      <PartDetailPage
+        instance={viewingPart}
+        allTags={partTags}
+        onBack={() => setViewingPartId(null)}
+        onSave={handleEditInstance}
+        onDelete={handleDeleteInstance}
+      />
+    );
+  }
 
   if (view === "maintenances" && maintSubView === "form") {
     return (
@@ -199,6 +259,7 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
         defaultBikeId={selectedBikeId ?? undefined}
         onSaved={handleMaintenanceSaved}
         onDelete={editingMaintenance ? handleDeleteMaintenance : undefined}
+        onViewPart={setViewingPartId}
         onBack={() => {
           setMaintSubView("list");
           setEditingMaintenance(null);
@@ -263,54 +324,130 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
                 </button>
               </div>
 
-              <div className="card table-container">
-                {maintenances.length === 0 ? (
-                  <div className="empty-state">Aucune maintenance enregistrée pour ce vélo.</div>
-                ) : (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Résumé</th>
-                        <th>Commentaire</th>
-                        <th>Coût</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {maintenances.map((m) => {
-                        const summary = buildMaintenanceSummary(m.id, allMounts);
-                        return (
-                          <tr key={m.id}>
-                            <td>{formatDate(m.date)}</td>
-                            <td className="maintenance-summary-cell">
-                              {summary.length === 0
-                                ? "—"
-                                : summary.map((line, i) => (
-                                    <div key={i} className="maintenance-summary-line">
-                                      <strong>{line.slot}</strong> = {line.before} → {line.after}
-                                    </div>
-                                  ))}
-                            </td>
-                            <td className="maintenance-comment-cell">{m.comment ?? ""}</td>
-                            <td>{m.cost != null ? `${formatNumber(m.cost, 2)} €` : ""}</td>
-                            <td className="actions-cell">
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => {
-                                  setEditingMaintenance(m);
-                                  setMaintSubView("form");
-                                }}
-                              >
-                                Modifier
-                              </button>
-                            </td>
+              <div className="parts-locations">
+                <div className="maintenance-diagram-column">
+                  {defs.length === 0 ? (
+                    <div className="card table-container">
+                      <div className="empty-state">
+                        Aucun emplacement défini. Configurez-les depuis l'onglet Emplacements.
+                      </div>
+                    </div>
+                  ) : (
+                    <BikeDiagram
+                      defs={defs}
+                      onMarkerClick={(def) => setSelectedDefId((current) => (current === def.id ? null : def.id))}
+                      isSelected={(def) => def.id === selectedDefId}
+                      markerVariant={(def) =>
+                        allMounts.some((m) => m.bike_part_def_id === def.id) ? "filled" : "empty"
+                      }
+                    />
+                  )}
+                </div>
+
+                <div className="maintenance-side-column">
+                  {selectedDef && (
+                    <div className="card" style={{ padding: "18px 20px" }}>
+                      <div className="section-title" style={{ marginTop: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        {selectedDef.name}
+                        <button className="btn-icon" onClick={() => setSelectedDefId(null)} title="Fermer l'historique">
+                          ×
+                        </button>
+                      </div>
+                      <SlotHistoryTimeline history={slotHistory} onSelectInstance={setViewingPartId} />
+                    </div>
+                  )}
+
+                  <div className="card table-container">
+                    {selectedDef && (
+                      <div className="reposition-banner">
+                        Maintenances filtrées sur « {selectedDef.name} »
+                        <button className="btn-icon" onClick={() => setSelectedDefId(null)} title="Voir toutes les maintenances">
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    {visibleMaintenances.length === 0 ? (
+                      <div className="empty-state">
+                        {selectedDef
+                          ? "Aucune maintenance n'a touché cet emplacement pour ce vélo."
+                          : "Aucune maintenance enregistrée pour ce vélo."}
+                      </div>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Kilométrage</th>
+                            <th>Résumé</th>
+                            <th>Commentaire</th>
+                            <th>Coût</th>
+                            <th></th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                        </thead>
+                        <tbody>
+                          {visibleMaintenances.map((m) => {
+                            const summary = buildMaintenanceSummary(m.id, allMounts);
+                            return (
+                              <tr key={m.id}>
+                                <td>{formatDate(m.date)}</td>
+                                <td>{formatNumber(mileageByMaintenance.get(m.id) ?? 0)} km</td>
+                                <td className="maintenance-summary-cell">
+                                  {summary.length === 0
+                                    ? "—"
+                                    : summary.map((line, i) => (
+                                        <div key={i} className="maintenance-summary-line">
+                                          <div className="maintenance-summary-line__slot">{line.slot}</div>
+                                          <div className="maintenance-summary-line__detail">
+                                            {line.before && (
+                                              <>
+                                                {line.before.name}{" "}
+                                                <button
+                                                  type="button"
+                                                  className="link-button"
+                                                  onClick={() => setViewingPartId(line.before!.id)}
+                                                >
+                                                  [{line.before.id}]
+                                                </button>
+                                              </>
+                                            )}
+                                            {line.before && line.after ? " → " : line.before ? " →" : "→ "}
+                                            {line.after && (
+                                              <>
+                                                {line.after.name}{" "}
+                                                <button
+                                                  type="button"
+                                                  className="link-button"
+                                                  onClick={() => setViewingPartId(line.after!.id)}
+                                                >
+                                                  [{line.after.id}]
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                </td>
+                                <td className="maintenance-comment-cell">{m.comment ?? ""}</td>
+                                <td>{m.cost != null ? `${formatNumber(m.cost, 2)} €` : ""}</td>
+                                <td className="actions-cell">
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => {
+                                      setEditingMaintenance(m);
+                                      setMaintSubView("form");
+                                    }}
+                                  >
+                                    Modifier
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -350,6 +487,13 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
           <div className="section-title">Exemplaires</div>
           <div className="toolbar toolbar--parts-filters">
             <div className="parts-filters">
+              <input
+                type="text"
+                className="select-input"
+                placeholder="Rechercher un nom…"
+                value={partSearch}
+                onChange={(e) => setPartSearch(e.target.value)}
+              />
               <select className="select-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
                 <option value="all">Toutes les pièces</option>
                 <option value="mounted">Montées</option>
@@ -382,6 +526,14 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
                   ))}
                 </div>
               )}
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={showRetired}
+                  onChange={(e) => setShowRetired(e.target.checked)}
+                />
+                Afficher les pièces mises au rebut
+              </label>
             </div>
             <button className="btn" onClick={() => setAddingInstance(true)}>
               Nouvel exemplaire
@@ -410,7 +562,16 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
                 <tbody>
                   {filteredStats.map((p) => (
                     <tr key={p.part_instance_id}>
-                      <td>{p.name}</td>
+                      <td>
+                        {p.name}{" "}
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setViewingPartId(p.part_instance_id)}
+                        >
+                          [{p.part_instance_id}]
+                        </button>
+                      </td>
                       <td>
                         {p.tags.map((t) => (
                           <span key={t.id} className="tag-chip">
@@ -424,9 +585,9 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
                           `Mis au rebut le ${formatDate(p.retired_date)}`
                         ) : p.currentMount ? (
                           <>
-                            <span className="bike-color-dot" style={{ background: p.currentMount.bike_color }} />
-                            {p.currentMount.bike_part_def_name} sur {p.currentMount.bike_name} depuis le{" "}
-                            {formatDate(p.currentMount.mounted_at)}
+                            {p.currentMount.bike_part_def_name} sur{" "}
+                            <strong style={{ color: p.currentMount.bike_color }}>{p.currentMount.bike_name}</strong>{" "}
+                            depuis le {formatDate(p.currentMount.mounted_at)}
                           </>
                         ) : (
                           "Non monté"
@@ -440,15 +601,9 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
                       <td className="actions-cell">
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => setHistoryInstanceId(p.part_instance_id)}
+                          onClick={() => setViewingPartId(p.part_instance_id)}
                         >
-                          Historique
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setEditingInstanceId(p.part_instance_id)}
-                        >
-                          Modifier
+                          Détails
                         </button>
                       </td>
                     </tr>
@@ -468,24 +623,6 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
         <PartInstanceFormModal allTags={partTags} onSave={handleAddInstance} onClose={() => setAddingInstance(false)} />
       )}
 
-      {editingInstance && (
-        <PartInstanceFormModal
-          allTags={partTags}
-          initialTagIds={editingInstance.tags.map((t) => t.id)}
-          instance={{
-            id: editingInstance.part_instance_id,
-            name: editingInstance.name,
-            purchase_cost: editingInstance.purchase_cost,
-            purchase_date: editingInstance.purchase_date,
-            retired_date: editingInstance.retired_date,
-            tags: editingInstance.tags,
-          }}
-          onSave={handleEditInstance}
-          onDelete={handleDeleteInstance}
-          onClose={() => setEditingInstanceId(null)}
-        />
-      )}
-
       {tagModal === "add" && (
         <PartTagFormModal
           onSave={handleAddTag}
@@ -502,16 +639,6 @@ export function MaintenancePage({ refreshKey, onDataChanged }: MaintenancePagePr
             setTagModal(null);
             setEditingTag(null);
           }}
-        />
-      )}
-
-      {historyInstance && (
-        <PartHistoryModal
-          instanceId={historyInstance.part_instance_id}
-          instanceName={historyInstance.name}
-          purchaseDate={historyInstance.purchase_date}
-          retiredDate={historyInstance.retired_date}
-          onClose={() => setHistoryInstanceId(null)}
         />
       )}
     </div>

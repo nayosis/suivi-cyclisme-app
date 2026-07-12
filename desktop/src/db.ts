@@ -332,11 +332,14 @@ export interface YearBikeRow {
   bike_name: string;
   distance_km: number;
   elevation_m: number;
+  ride_count: number;
+  duration_minutes: number;
 }
 
 /**
- * Calcule la distance et le dénivelé groupés par année ET par vélo (utilisé
- * pour le graphique en barres empilées "Par année" du dashboard).
+ * Calcule la distance, le dénivelé, le nombre de sorties et la durée
+ * groupés par année ET par vélo (utilisé pour les graphiques en barres
+ * empilées "Par année" du tableau de bord).
  */
 export async function getByYearAndBike(): Promise<YearBikeRow[]> {
   const db = await getDb();
@@ -344,7 +347,9 @@ export async function getByYearAndBike(): Promise<YearBikeRow[]> {
     `SELECT substr(rides.date, 1, 4) AS year,
             bikes.name AS bike_name,
             COALESCE(SUM(rides.distance_km), 0) as distance_km,
-            COALESCE(SUM(rides.elevation_m), 0) as elevation_m
+            COALESCE(SUM(rides.elevation_m), 0) as elevation_m,
+            COUNT(*) as ride_count,
+            COALESCE(SUM(rides.duration_minutes), 0) as duration_minutes
      FROM rides
      JOIN bikes ON bikes.id = rides.bike_id
      GROUP BY year, bike_name
@@ -379,14 +384,15 @@ export async function getStatsForMonth(ym: string): Promise<Totals> {
  */
 export async function getStatsForMonthByBike(
   ym: string
-): Promise<(BreakdownRow & { color: string })[]> {
+): Promise<(BreakdownRow & { color: string; duration_minutes: number })[]> {
   const db = await getDb();
-  return db.select<(BreakdownRow & { color: string })[]>(
+  return db.select<(BreakdownRow & { color: string; duration_minutes: number })[]>(
     `SELECT bikes.name AS label,
             bikes.color AS color,
             COALESCE(SUM(rides.distance_km), 0) as distance_km,
             COALESCE(SUM(rides.elevation_m), 0) as elevation_m,
-            COUNT(*) as ride_count
+            COUNT(*) as ride_count,
+            COALESCE(SUM(rides.duration_minutes), 0) as duration_minutes
      FROM rides
      JOIN bikes ON bikes.id = rides.bike_id
      WHERE substr(rides.date, 1, 7) = ?

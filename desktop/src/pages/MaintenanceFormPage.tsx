@@ -12,6 +12,8 @@ interface MaintenanceFormPageProps {
   defaultBikeId?: number;
   onSaved: () => void;
   onDelete?: () => Promise<void> | void;
+  /** Ouvre la fiche d'une pièce existante (interrompt l'édition en cours de cette maintenance). */
+  onViewPart?: (instanceId: number) => void;
   onBack: () => void;
 }
 
@@ -36,6 +38,19 @@ function newKey(): string {
   return Math.random().toString(36).slice(2);
 }
 
+/** Nom de pièce + identifiant entre crochets, cliquable si `onView` est fourni. */
+function PartRefLabel({ name, id, onView }: { name: string; id: number; onView?: (id: number) => void }) {
+  if (!onView) return <>{name} [{id}]</>;
+  return (
+    <>
+      {name}{" "}
+      <button type="button" className="link-button" onClick={() => onView(id)}>
+        [{id}]
+      </button>
+    </>
+  );
+}
+
 /**
  * Page d'ajout/modification d'une maintenance. Le vélo est représenté par le
  * schéma des emplacements : cliquer sur un emplacement permet d'y déclarer
@@ -49,6 +64,7 @@ export function MaintenanceFormPage({
   defaultBikeId,
   onSaved,
   onDelete,
+  onViewPart,
   onBack,
 }: MaintenanceFormPageProps) {
   const [bikeId, setBikeId] = useState<number>(maintenance?.bike_id ?? defaultBikeId ?? bikes[0]?.id ?? 0);
@@ -347,7 +363,7 @@ export function MaintenanceFormPage({
                         <option value="">Choisir…</option>
                         {tagFilteredInstances.map((i) => (
                           <option key={i.id} value={i.id}>
-                            {i.name}
+                            {i.name} [{i.id}]
                           </option>
                         ))}
                         <option value="__new__">+ Nouvel exemplaire…</option>
@@ -405,7 +421,13 @@ export function MaintenanceFormPage({
                     {activeState.kind === "occupied" && (
                       <>
                         <p style={{ fontSize: 13.5, marginBottom: 4 }}>
-                          <strong>{activeState.mount.part_instance_name}</strong>
+                          <strong>
+                            <PartRefLabel
+                              name={activeState.mount.part_instance_name}
+                              id={activeState.mount.part_instance_id}
+                              onView={onViewPart}
+                            />
+                          </strong>
                         </p>
                         <p style={{ fontSize: 12.5, color: "var(--secondary-ink)", marginBottom: 12 }}>
                           Monté depuis le {formatDate(activeState.mount.mounted_at)}
@@ -437,7 +459,14 @@ export function MaintenanceFormPage({
                     {activeState.kind === "staged-removal" && (
                       <>
                         <p style={{ fontSize: 13.5, marginBottom: 12 }}>
-                          <strong>{activeState.mount.part_instance_name}</strong> sera retiré
+                          <strong>
+                            <PartRefLabel
+                              name={activeState.mount.part_instance_name}
+                              id={activeState.mount.part_instance_id}
+                              onView={onViewPart}
+                            />
+                          </strong>{" "}
+                          sera retiré
                         </p>
                         <div className="modal-actions">
                           <div />
@@ -464,7 +493,10 @@ export function MaintenanceFormPage({
                         <p style={{ fontSize: 13.5, marginBottom: 12 }}>
                           <strong>
                             {activeState.draft.mode === "existing"
-                              ? availableInstances.find((i) => i.id === activeState.draft.instanceId)?.name ?? "…"
+                              ? (() => {
+                                  const inst = availableInstances.find((i) => i.id === activeState.draft.instanceId);
+                                  return inst ? `${inst.name} [${inst.id}]` : "…";
+                                })()
                               : activeState.draft.name}
                           </strong>{" "}
                           sera installé
@@ -489,7 +521,14 @@ export function MaintenanceFormPage({
                     {activeState.kind === "existing-install" && (
                       <>
                         <p style={{ fontSize: 13.5, marginBottom: 12 }}>
-                          <strong>{activeState.mount.part_instance_name}</strong> installé par cette maintenance
+                          <strong>
+                            <PartRefLabel
+                              name={activeState.mount.part_instance_name}
+                              id={activeState.mount.part_instance_id}
+                              onView={onViewPart}
+                            />
+                          </strong>{" "}
+                          installé par cette maintenance
                         </p>
                         <div className="modal-actions">
                           <div />
@@ -508,7 +547,14 @@ export function MaintenanceFormPage({
                     {activeState.kind === "existing-removal" && (
                       <>
                         <p style={{ fontSize: 13.5, marginBottom: 12 }}>
-                          <strong>{activeState.mount.part_instance_name}</strong> retiré par cette maintenance
+                          <strong>
+                            <PartRefLabel
+                              name={activeState.mount.part_instance_name}
+                              id={activeState.mount.part_instance_id}
+                              onView={onViewPart}
+                            />
+                          </strong>{" "}
+                          retiré par cette maintenance
                         </p>
                         <div className="modal-actions">
                           <div />

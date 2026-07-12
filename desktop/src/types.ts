@@ -137,6 +137,22 @@ export interface PartMount {
   removed_by_maintenance_id: number | null;
 }
 
+/**
+ * Une période de montage sur un **emplacement d'un vélo donné**, avec le
+ * kilométrage et le dénivelé parcourus par ce vélo pendant cette période
+ * précise. Sert à la frise chronologique par emplacement (par opposition à
+ * {@link PartMount}, qui couvre toutes les périodes d'un exemplaire donné).
+ */
+export interface SlotMount {
+  id: number;
+  part_instance_id: number;
+  part_instance_name: string;
+  mounted_at: string;
+  unmounted_at: string | null;
+  total_km: number;
+  total_elevation_m: number;
+}
+
 /** Statistiques cumulées d'un exemplaire de pièce (toutes périodes confondues). */
 export interface PartInstanceStats {
   part_instance_id: number;

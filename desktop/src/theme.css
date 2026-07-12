@@ -171,6 +171,18 @@ button {
   grid-template-columns: repeat(3, 1fr);
 }
 
+@media (max-width: 900px) {
+  .stat-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .stat-tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
 .stat-tile {
   padding: 18px 20px;
 }
@@ -245,6 +257,12 @@ button {
   gap: 14px;
 }
 
+@media (max-width: 700px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chart-card {
   padding: 18px 18px 8px;
 }
@@ -262,9 +280,21 @@ button {
   gap: 14px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .month-cards-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 780px) {
   .month-cards-row {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .month-cards-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -281,7 +311,8 @@ button {
 
 .month-card__stats {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
 }
 
 .month-card__value {
@@ -355,32 +386,34 @@ button {
 }
 
 .heat-1 {
-  background: var(--accent);
-  opacity: 0.28;
+  background: var(--heatmap-color, var(--accent));
+  opacity: 0.35;
 }
 
 .heat-2 {
-  background: var(--accent);
-  opacity: 0.5;
+  background: var(--heatmap-color, var(--accent));
+  opacity: 0.65;
 }
 
 .heat-3 {
-  background: var(--accent);
-  opacity: 0.75;
-}
-
-.heat-4 {
-  background: var(--accent);
+  background: var(--heatmap-color, var(--accent));
   opacity: 1;
 }
 
 .calendar-heatmap__legend {
   display: flex;
   align-items: center;
-  gap: 5px;
+  flex-wrap: wrap;
+  gap: 14px;
   margin-top: 12px;
   font-size: 10.5px;
   color: var(--muted-ink);
+}
+
+.calendar-heatmap__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .calendar-heatmap__tooltip {
@@ -536,6 +569,7 @@ button {
 .table-container {
   max-height: calc(100vh - 260px);
   overflow-y: auto;
+  overflow-x: auto;
   border-radius: var(--radius-lg);
 }
 
@@ -1069,6 +1103,21 @@ button {
   background: var(--surface-hover);
 }
 
+.link-button {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
 .page-header__title {
   font-size: 18px;
   font-weight: 700;
@@ -1190,6 +1239,19 @@ button {
   align-self: stretch;
 }
 
+.maintenance-diagram-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.maintenance-side-column {
+  flex: 3;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .bike-diagram {
   position: relative;
   width: 100%;
@@ -1246,6 +1308,10 @@ button {
   cursor: default;
   pointer-events: none;
   box-shadow: 0 0 0 4px rgba(46, 160, 67, 0.25);
+}
+
+.bike-diagram__marker--selected {
+  box-shadow: 0 0 0 3px var(--accent);
 }
 
 .bike-diagram__marker-label {
@@ -1384,17 +1450,19 @@ button {
   font-size: 12px;
 }
 
-.maintenance-summary-line {
-  color: var(--secondary-ink);
+.maintenance-summary-line + .maintenance-summary-line {
+  margin-top: 8px;
+}
+
+.maintenance-summary-line__slot {
+  font-weight: 700;
+  color: var(--primary-ink);
   white-space: nowrap;
 }
 
-.maintenance-summary-line + .maintenance-summary-line {
-  margin-top: 3px;
-}
-
-.maintenance-summary-line strong {
-  color: var(--primary-ink);
+.maintenance-summary-line__detail {
+  color: var(--secondary-ink);
+  white-space: nowrap;
 }
 
 /* ---------- Frise chronologique (historique d'une pièce) ---------- */

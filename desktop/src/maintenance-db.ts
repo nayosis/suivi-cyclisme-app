@@ -7,6 +7,7 @@ import type {
   PartInstanceStats,
   PartMount,
   PartTag,
+  SlotMount,
 } from "./types";
 
 /** Levée quand on crée/renomme un emplacement avec un nom déjà utilisé. */
@@ -23,6 +24,13 @@ export class SlotAlreadyOccupiedError extends Error {}
 export class BikesMissingPurchaseDateError extends Error {}
 /** Levée quand on crée/renomme un tag avec un nom déjà utilisé. */
 export class PartTagAlreadyExistsError extends Error {}
+/**
+ * Levée quand une installation ou une désinstallation daterait d'avant un
+ * autre événement déjà enregistré sur le même emplacement du même vélo (ou
+ * avant la pose de la pièce qu'on désinstalle) — ça inverserait la
+ * chronologie de l'emplacement.
+ */
+export class InvalidMountDateError extends Error {}
 
 /** @throws {BikesMissingPurchaseDateError} si au moins un vélo n'a pas de date d'acquisition renseignée. */
 async function assertAllBikesHavePurchaseDate(): Promise<void> {
@@ -366,6 +374,27 @@ export async function listMaintenances(bikeId?: number): Promise<Maintenance[]> 
   return db.select<Maintenance[]>(`${MAINTENANCE_SELECT} ORDER BY m.date DESC, m.id DESC`);
 }
 
+/**
+ * Kilométrage cumulé du vélo (kilométrage à l'achat + sorties jusqu'à cette
+ * date incluse) à la date de chaque maintenance de ce vélo — donne le
+ * kilométrage du vélo au moment de l'intervention.
+ */
+export async function getBikeMileageAtMaintenances(
+  bikeId: number
+): Promise<{ maintenance_id: number; mileage_km: number }[]> {
+  const db = await getDb();
+  return db.select<{ maintenance_id: number; mileage_km: number }[]>(
+    `SELECT m.id AS maintenance_id,
+            b.purchase_km + COALESCE(
+              (SELECT SUM(r.distance_km) FROM rides r WHERE r.bike_id = m.bike_id AND r.date <= m.date), 0
+            ) AS mileage_km
+     FROM maintenances m
+     JOIN bikes b ON b.id = m.bike_id
+     WHERE m.bike_id = ?`,
+    [bikeId]
+  );
+}
+
 /** Crée un événement de maintenance (sans opération de pièce associée pour l'instant). */
 export async function addMaintenance(input: MaintenanceInput): Promise<number> {
   const db = await getDb();
@@ -380,9 +409,30 @@ export async function addMaintenance(input: MaintenanceInput): Promise<number> {
  * Met à jour une maintenance. Si la date ou le vélo change, les périodes de
  * montage qu'elle a déclenchées (posées ou déposées) sont mises à jour en
  * conséquence pour rester cohérentes.
+ * @throws {InvalidMountDateError} si la nouvelle date inverserait la chronologie d'un emplacement qu'elle a touché.
  */
 export async function updateMaintenance(id: number, input: MaintenanceInput): Promise<void> {
   const db = await getDb();
+
+  const installedMounts = await db.select<{ id: number; bike_part_def_id: number }[]>(
+    "SELECT id, bike_part_def_id FROM part_mounts WHERE mounted_by_maintenance_id = ?",
+    [id]
+  );
+  for (const m of installedMounts) {
+    await assertChronologicalInstall(input.bike_id, m.bike_part_def_id, input.date, m.id);
+  }
+  const removedMounts = await db.select<{ mounted_at: string }[]>(
+    "SELECT mounted_at FROM part_mounts WHERE removed_by_maintenance_id = ?",
+    [id]
+  );
+  for (const m of removedMounts) {
+    if (input.date < m.mounted_at) {
+      throw new InvalidMountDateError(
+        `La date de dépose (${input.date}) est antérieure à la date de pose de la pièce concernée (${m.mounted_at}).`
+      );
+    }
+  }
+
   await db.execute("UPDATE maintenances SET bike_id = ?, date = ?, comment = ?, cost = ? WHERE id = ?", [
     input.bike_id,
     input.date,
@@ -413,6 +463,48 @@ export async function deleteMaintenance(id: number): Promise<void> {
     [null, null, id]
   );
   await db.execute("DELETE FROM maintenances WHERE id = ?", [id]);
+}
+
+// ---------- Cohérence chronologique des montages ----------
+
+/**
+ * @throws {InvalidMountDateError} si `mountedAt` est antérieur à la pose du
+ * montage le plus récent déjà enregistré sur cet emplacement de ce vélo
+ * (`excludeMountId` exclu de la comparaison, pour une modification en place).
+ */
+async function assertChronologicalInstall(
+  bikeId: number,
+  bikePartDefId: number,
+  mountedAt: string,
+  excludeMountId?: number
+): Promise<void> {
+  const db = await getDb();
+  const rows = await db.select<{ mounted_at: string }[]>(
+    `SELECT mounted_at FROM part_mounts
+     WHERE bike_id = ? AND bike_part_def_id = ? ${excludeMountId != null ? "AND id != ?" : ""}
+     ORDER BY mounted_at DESC LIMIT 1`,
+    excludeMountId != null ? [bikeId, bikePartDefId, excludeMountId] : [bikeId, bikePartDefId]
+  );
+  const last = rows[0];
+  if (last && mountedAt < last.mounted_at) {
+    throw new InvalidMountDateError(
+      `La date de pose (${mountedAt}) est antérieure au dernier changement enregistré sur cet emplacement (${last.mounted_at}).`
+    );
+  }
+}
+
+/** @throws {InvalidMountDateError} si `unmountedAt` est antérieur à la pose (`mounted_at`) de ce montage. */
+async function assertChronologicalUninstall(partMountId: number, unmountedAt: string): Promise<void> {
+  const db = await getDb();
+  const [mount] = await db.select<{ mounted_at: string }[]>(
+    "SELECT mounted_at FROM part_mounts WHERE id = ?",
+    [partMountId]
+  );
+  if (mount && unmountedAt < mount.mounted_at) {
+    throw new InvalidMountDateError(
+      `La date de dépose (${unmountedAt}) est antérieure à la date de pose de cette pièce (${mount.mounted_at}).`
+    );
+  }
 }
 
 // ---------- Montages / démontages ----------
@@ -482,6 +574,7 @@ export async function getMaintenanceOperations(
  * @throws {PartAlreadyMountedError} si cet exemplaire a déjà une période de
  * montage ouverte ailleurs (il faut d'abord le désinstaller).
  * @throws {SlotAlreadyOccupiedError} si cet emplacement est déjà occupé sur ce vélo.
+ * @throws {InvalidMountDateError} si `mountedAt` est antérieur au dernier changement enregistré sur cet emplacement.
  */
 export async function installPart(
   partInstanceId: number,
@@ -501,6 +594,7 @@ export async function installPart(
     [bikeId, bikePartDefId]
   );
   if (occupied.length > 0) throw new SlotAlreadyOccupiedError(String(bikePartDefId));
+  await assertChronologicalInstall(bikeId, bikePartDefId, mountedAt);
   const result = await db.execute(
     `INSERT INTO part_mounts (part_instance_id, bike_id, bike_part_def_id, mounted_at, mounted_by_maintenance_id)
      VALUES (?, ?, ?, ?, ?)`,
@@ -509,12 +603,16 @@ export async function installPart(
   return result.lastInsertId as number;
 }
 
-/** Désinstalle (ferme la période de montage ouverte), dans le cadre d'une maintenance ou directement. */
+/**
+ * Désinstalle (ferme la période de montage ouverte), dans le cadre d'une maintenance ou directement.
+ * @throws {InvalidMountDateError} si `unmountedAt` est antérieur à la pose de ce montage.
+ */
 export async function uninstallPart(
   partMountId: number,
   maintenanceId: number | null,
   unmountedAt: string
 ): Promise<void> {
+  await assertChronologicalUninstall(partMountId, unmountedAt);
   const db = await getDb();
   await db.execute(
     "UPDATE part_mounts SET unmounted_at = ?, removed_by_maintenance_id = ? WHERE id = ? AND unmounted_at IS NULL",
@@ -534,6 +632,31 @@ export async function reopenMount(partMountId: number): Promise<void> {
   await db.execute(
     "UPDATE part_mounts SET unmounted_at = ?, removed_by_maintenance_id = ? WHERE id = ?",
     [null, null, partMountId]
+  );
+}
+
+/**
+ * Historique de montage d'un **emplacement donné sur un vélo donné** (toutes
+ * les pièces qui y sont passées, du plus ancien au plus récent), avec pour
+ * chaque période le kilométrage et le dénivelé parcourus par ce vélo
+ * (sorties dont la date tombe dans la période de montage).
+ */
+export async function getSlotHistory(bikeId: number, bikePartDefId: number): Promise<SlotMount[]> {
+  const db = await getDb();
+  return db.select<SlotMount[]>(
+    `SELECT pm.id, pm.part_instance_id, pi.name AS part_instance_name,
+            pm.mounted_at, pm.unmounted_at,
+            COALESCE(SUM(r.distance_km), 0) AS total_km,
+            COALESCE(SUM(r.elevation_m), 0) AS total_elevation_m
+     FROM part_mounts pm
+     JOIN part_instances pi ON pi.id = pm.part_instance_id
+     LEFT JOIN rides r ON r.bike_id = pm.bike_id
+       AND r.date >= pm.mounted_at
+       AND (pm.unmounted_at IS NULL OR r.date < pm.unmounted_at)
+     WHERE pm.bike_id = ? AND pm.bike_part_def_id = ?
+     GROUP BY pm.id
+     ORDER BY pm.mounted_at`,
+    [bikeId, bikePartDefId]
   );
 }
 
