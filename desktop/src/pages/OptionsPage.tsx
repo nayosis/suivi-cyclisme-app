@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
 import { useHeatmapColor } from "../heatmap-color-context";
@@ -51,10 +52,19 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
   const [databases, setDatabases] = useState<DatabaseEntry[]>([]);
   const [currentDbFilename, setCurrentDbFilename] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
     setDatabases(listDatabases());
     setCurrentDbFilename(getCurrentDatabaseFilename());
+  }, []);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      setAppVersion("Mode dev");
+    } else {
+      getVersion().then(setAppVersion);
+    }
   }, []);
 
   async function handleExport() {
@@ -286,6 +296,16 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
         </div>
 
         <StatusText message={resetMessage} />
+      </div>
+
+      <div className="section-title">À propos</div>
+      <div className="card options-card">
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Version</div>
+          </div>
+          <div>{appVersion ?? "…"}</div>
+        </div>
       </div>
 
       {resetModalOpen && (

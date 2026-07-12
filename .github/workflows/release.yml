@@ -35,6 +35,24 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Aligner la version sur le tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Version : $version"
+
+          (Get-Content desktop/src-tauri/tauri.conf.json -Raw) `
+            -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" |
+            Set-Content -NoNewline desktop/src-tauri/tauri.conf.json
+
+          (Get-Content desktop/package.json -Raw) `
+            -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" |
+            Set-Content -NoNewline desktop/package.json
+
+          (Get-Content desktop/src-tauri/Cargo.toml -Raw) `
+            -replace '(?m)^version = "[^"]*"', "version = `"$version`"" |
+            Set-Content -NoNewline desktop/src-tauri/Cargo.toml
+
       - name: Build et publication de la release
         uses: tauri-apps/tauri-action@v0
         env:
