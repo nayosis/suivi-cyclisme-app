@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { createRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import * as db from "../db";
-import type { DayValue, YearBikeRow } from "../db";
+import type { YearBikeRow } from "../db";
 import { DEFAULT_BIKE_COLOR, type Totals } from "../types";
 import { StatTile } from "../components/StatTile";
 import { type BreakdownRowData } from "../components/BreakdownList";
@@ -8,6 +10,22 @@ import { StackedBarChart } from "../components/StackedBarChart";
 import { MonthCard } from "../components/MonthCard";
 import { CalendarHeatmap } from "../components/CalendarHeatmap";
 import { MONTH_NAMES, formatNumber } from "../format";
+import { cyclingKey } from "../query-client";
+import { rootRoute } from "../routes/root";
+
+interface DashboardSearch {
+  year?: number;
+}
+
+export const Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dashboard",
+  validateSearch: (search: Record<string, unknown>): DashboardSearch => {
+    const year = Number(search.year);
+    return { year: Number.isFinite(year) && year > 0 ? year : undefined };
+  },
+  component: DashboardPage,
+});
 
 interface BikeTotal {
   label: string;
@@ -41,47 +59,43 @@ function toHours(rows: Record<string, string | number>[], bikeNames: string[]): 
   });
 }
 
-export function DashboardPage({ refreshKey }: { refreshKey: number }) {
-  const [totals, setTotals] = useState<Totals | null>(null);
-  const [byBike, setByBike] = useState<BikeTotal[]>([]);
-  const [byYearAndBike, setByYearAndBike] = useState<YearBikeRow[]>([]);
-  const [monthStats, setMonthStats] = useState<
-    { label: string; totals: Totals; breakdown: BreakdownRowData[] }[]
-  >([]);
-  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
-  const [dailyData, setDailyData] = useState<DayValue[]>([]);
+function DashboardPage() {
+  const { year } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const calendarYear = year ?? new Date().getFullYear();
 
-  useEffect(() => {
-    (async () => {
-      const [t, bikes, yearBike] = await Promise.all([db.getTotals(), db.getByBike(), db.getByYearAndBike()]);
-      setTotals(t);
-      setByBike(bikes);
-      setByYearAndBike(yearBike);
-    })();
-  }, [refreshKey]);
-
-  useEffect(() => {
-    (async () => {
+  const totalsQuery = useQuery({ queryKey: [...cyclingKey, "totals"], queryFn: db.getTotals });
+  const byBikeQuery = useQuery({ queryKey: [...cyclingKey, "byBike"], queryFn: db.getByBike });
+  const byYearAndBikeQuery = useQuery({ queryKey: [...cyclingKey, "byYearAndBike"], queryFn: db.getByYearAndBike });
+  const dailyQuery = useQuery({
+    queryKey: [...cyclingKey, "dailyDistance", calendarYear],
+    queryFn: () => db.getDailyDistanceForYear(calendarYear),
+  });
+  const monthGridQuery = useQuery({
+    queryKey: [...cyclingKey, "monthGrid", calendarYear],
+    queryFn: async () => {
       const months = Array.from({ length: 12 }, (_, i) => `${calendarYear}-${String(i + 1).padStart(2, "0")}`);
-      const [daily, monthTotalsArr, monthByBikeArr] = await Promise.all([
-        db.getDailyDistanceForYear(calendarYear),
+      const [monthTotalsArr, monthByBikeArr] = await Promise.all([
         Promise.all(months.map((ym) => db.getStatsForMonth(ym))),
         Promise.all(months.map((ym) => db.getStatsForMonthByBike(ym))),
       ]);
-      setDailyData(daily);
-      setMonthStats(
-        months.map((_ym, i) => ({
-          label: MONTH_NAMES[i],
-          totals: monthTotalsArr[i],
-          breakdown: monthByBikeArr[i].map((b) => ({
-            label: b.label,
-            value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)} · ${formatNumber(b.duration_minutes / 60, 1)} h`,
-            color: b.color,
-          })),
-        }))
-      );
-    })();
-  }, [calendarYear, refreshKey]);
+      return months.map((_ym, i) => ({
+        label: MONTH_NAMES[i],
+        totals: monthTotalsArr[i],
+        breakdown: monthByBikeArr[i].map((b) => ({
+          label: b.label,
+          value: `${formatNumber(b.distance_km)} km · ${formatNumber(b.elevation_m)} m · ${formatNumber(b.ride_count)} · ${formatNumber(b.duration_minutes / 60, 1)} h`,
+          color: b.color,
+        })),
+      }));
+    },
+  });
+
+  const totals = totalsQuery.data;
+  const byBike = byBikeQuery.data ?? [];
+  const byYearAndBike = byYearAndBikeQuery.data ?? [];
+  const monthStats = monthGridQuery.data ?? [];
+  const dailyData = dailyQuery.data ?? [];
 
   const availableYears = useMemo(() => {
     const years = Array.from(new Set(byYearAndBike.map((r) => parseInt(r.year, 10))));
@@ -179,7 +193,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
         Informations de l'année {calendarYear}
         <select
           value={calendarYear}
-          onChange={(e) => setCalendarYear(Number(e.target.value))}
+          onChange={(e) => navigate({ search: { year: Number(e.target.value) } })}
           style={{
             padding: "4px 8px",
             fontSize: 12.5,

@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { createRoute } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
 import { useHeatmapColor } from "../heatmap-color-context";
@@ -15,10 +18,14 @@ import {
   switchDatabase,
   type DatabaseEntry,
 } from "../database-registry";
+import { invalidateEverything } from "../query-client";
+import { rootRoute } from "../routes/root";
 
-interface OptionsPageProps {
-  onDataChanged: () => void;
-}
+export const Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/options",
+  component: OptionsPage,
+});
 
 const THEME_LABELS: Record<ThemeMode, string> = {
   system: "Système",
@@ -39,7 +46,7 @@ function StatusText({ message }: { message: StatusMessage | null }) {
   return <div className={`${message.type}-text`}>{message.text}</div>;
 }
 
-export function OptionsPage({ onDataChanged }: OptionsPageProps) {
+function OptionsPage() {
   const { mode, setMode, resolvedDark } = useTheme();
   const { color: heatmapColor, setColor: setHeatmapColor } = useHeatmapColor();
   const heatmapColorValue = heatmapColor ?? (resolvedDark ? ACCENT_FALLBACK.dark : ACCENT_FALLBACK.light);
@@ -93,7 +100,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
           type: summary.newerFormatDetected ? "warning" : "success",
           text: `Import terminé : ${summary.bikesAdded} vélo(s) ajouté(s), ${summary.ridesAdded} sortie(s) ajoutée(s), ${summary.ridesSkipped} ignorée(s) (déjà présentes).${warning}`,
         });
-        onDataChanged();
+        await invalidateEverything();
       }
     } catch (err) {
       setDataMessage({ type: "error", text: errorMessage(err) });
@@ -107,7 +114,17 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
     switchDatabase(filename);
     setCurrentDbFilename(filename);
     setDbMessage(null);
-    onDataChanged();
+    invalidateEverything();
+  }
+
+  async function handleOpenDataFolder() {
+    setDbMessage(null);
+    try {
+      const target = currentDbFilename ? await join(await appDataDir(), currentDbFilename) : await appDataDir();
+      await revealItemInDir(target);
+    } catch (err) {
+      setDbMessage({ type: "error", text: errorMessage(err) });
+    }
   }
 
   async function handleScan() {
@@ -134,7 +151,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
       if (switchedTo) {
         parts.push(`La base active a disparu : bascule automatique sur « ${switchedTo.name} ».`);
         setCurrentDbFilename(switchedTo.filename);
-        onDataChanged();
+        await invalidateEverything();
       } else if (currentCleared) {
         parts.push(
           "La base active a disparu et aucune autre base n'est disponible : redémarrez l'application pour en créer une nouvelle."
@@ -245,6 +262,17 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
             Créer…
           </button>
         </div>
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Dossier des bases de données</div>
+            <div className="options-row__hint">
+              Ouvre le dossier contenant les fichiers .db, avec la base active sélectionnée.
+            </div>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={handleOpenDataFolder}>
+            Ouvrir le dossier
+          </button>
+        </div>
 
         <StatusText message={dbMessage} />
       </div>
@@ -317,7 +345,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
               type: "success",
               text: "Toutes les données ont été supprimées après sauvegarde. L'application repart de zéro.",
             });
-            onDataChanged();
+            invalidateEverything();
           }}
         />
       )}
@@ -331,7 +359,7 @@ export function OptionsPage({ onDataChanged }: OptionsPageProps) {
             setCurrentDbFilename(entry.filename);
             setCreateDbModalOpen(false);
             setDbMessage({ type: "success", text: `Base « ${entry.name} » créée et sélectionnée.` });
-            onDataChanged();
+            invalidateEverything();
           }}
         />
       )}

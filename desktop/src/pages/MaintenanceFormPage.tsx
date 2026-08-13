@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import * as maint from "../maintenance-db";
 import { errorMessage, formatDate, todayIso } from "../format";
 import { renderMarkdown } from "../markdown";
@@ -12,8 +13,6 @@ interface MaintenanceFormPageProps {
   defaultBikeId?: number;
   onSaved: () => void;
   onDelete?: () => Promise<void> | void;
-  /** Ouvre la fiche d'une pièce existante (interrompt l'édition en cours de cette maintenance). */
-  onViewPart?: (instanceId: number) => void;
   onBack: () => void;
 }
 
@@ -38,15 +37,14 @@ function newKey(): string {
   return Math.random().toString(36).slice(2);
 }
 
-/** Nom de pièce + identifiant entre crochets, cliquable si `onView` est fourni. */
-function PartRefLabel({ name, id, onView }: { name: string; id: number; onView?: (id: number) => void }) {
-  if (!onView) return <>{name} [{id}]</>;
+/** Nom de pièce + identifiant entre crochets, cliquable vers sa fiche. */
+function PartRefLabel({ name, id }: { name: string; id: number }) {
   return (
     <>
       {name}{" "}
-      <button type="button" className="link-button" onClick={() => onView(id)}>
+      <Link to="/maintenance/parts/$partId" params={{ partId: String(id) }} className="link-button">
         [{id}]
-      </button>
+      </Link>
     </>
   );
 }
@@ -64,7 +62,6 @@ export function MaintenanceFormPage({
   defaultBikeId,
   onSaved,
   onDelete,
-  onViewPart,
   onBack,
 }: MaintenanceFormPageProps) {
   const [bikeId, setBikeId] = useState<number>(maintenance?.bike_id ?? defaultBikeId ?? bikes[0]?.id ?? 0);
@@ -425,7 +422,6 @@ export function MaintenanceFormPage({
                             <PartRefLabel
                               name={activeState.mount.part_instance_name}
                               id={activeState.mount.part_instance_id}
-                              onView={onViewPart}
                             />
                           </strong>
                         </p>
@@ -463,7 +459,6 @@ export function MaintenanceFormPage({
                             <PartRefLabel
                               name={activeState.mount.part_instance_name}
                               id={activeState.mount.part_instance_id}
-                              onView={onViewPart}
                             />
                           </strong>{" "}
                           sera retiré
@@ -525,7 +520,6 @@ export function MaintenanceFormPage({
                             <PartRefLabel
                               name={activeState.mount.part_instance_name}
                               id={activeState.mount.part_instance_id}
-                              onView={onViewPart}
                             />
                           </strong>{" "}
                           installé par cette maintenance
@@ -551,7 +545,6 @@ export function MaintenanceFormPage({
                             <PartRefLabel
                               name={activeState.mount.part_instance_name}
                               id={activeState.mount.part_instance_id}
-                              onView={onViewPart}
                             />
                           </strong>{" "}
                           retiré par cette maintenance

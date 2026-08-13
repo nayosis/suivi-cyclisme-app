@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
+import { createRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import * as maint from "../maintenance-db";
 import { BikePartDefAlreadyExistsError, BikePartDefInUseError, BikesMissingPurchaseDateError } from "../maintenance-db";
 import { errorMessage } from "../format";
-import type { BikePartDef, PartTag } from "../types";
-import { BikeDiagram } from "./BikeDiagram";
+import type { BikePartDef } from "../types";
+import { BikeDiagram } from "../components/BikeDiagram";
+import { maintenanceKey, invalidateMaintenance } from "../query-client";
+import { maintenanceRoute } from "../routes/maintenance-layout";
 
-interface PartsLocationsViewProps {
-  refreshKey: number;
-  onDataChanged: () => void;
-}
+export const Route = createRoute({
+  getParentRoute: () => maintenanceRoute,
+  path: "/locations",
+  component: MaintenanceLocationsPage,
+});
 
 type Detail =
   | { kind: "none" }
@@ -24,15 +29,18 @@ function describeError(err: unknown): string {
 }
 
 /**
- * Vue « Emplacements » : configuration pure du catalogue d'emplacements du
+ * Onglet « Emplacements » : configuration pure du catalogue d'emplacements du
  * vélo (nom, position sur le schéma, caractère obligatoire), partagé par
  * tous les vélos. N'installe ni ne désinstalle aucune pièce — ça, c'est le
  * rôle de la saisie d'une maintenance, pour garder la date et l'événement de
  * maintenance associés à chaque changement de pièce.
  */
-export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocationsViewProps) {
-  const [defs, setDefs] = useState<BikePartDef[]>([]);
-  const [allTags, setAllTags] = useState<PartTag[]>([]);
+function MaintenanceLocationsPage() {
+  const defsQuery = useQuery({ queryKey: [...maintenanceKey, "defs"], queryFn: maint.listBikePartDefs });
+  const allTagsQuery = useQuery({ queryKey: [...maintenanceKey, "partTags"], queryFn: maint.listPartTags });
+  const defs = defsQuery.data ?? [];
+  const allTags = allTagsQuery.data ?? [];
+
   const [repositioningDefId, setRepositioningDefId] = useState<number | null>(null);
   const [detail, setDetail] = useState<Detail>({ kind: "none" });
   const [panelError, setPanelError] = useState<string | null>(null);
@@ -40,16 +48,6 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
   const [formName, setFormName] = useState("");
   const [formMandatory, setFormMandatory] = useState(false);
   const [formTagIds, setFormTagIds] = useState<Set<number>>(new Set());
-
-  async function refreshCatalog() {
-    const [d, tags] = await Promise.all([maint.listBikePartDefs(), maint.listPartTags()]);
-    setDefs(d);
-    setAllTags(tags);
-  }
-
-  useEffect(() => {
-    refreshCatalog();
-  }, [refreshKey]);
 
   useEffect(() => {
     setPanelError(null);
@@ -84,8 +82,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       if (def) {
         try {
           await maint.updateBikePartDef(def.id, def.name, x, y, def.mandatory, def.tagIds);
-          await refreshCatalog();
-          onDataChanged();
+          await invalidateMaintenance();
         } catch (err) {
           setPanelError(describeError(err));
         }
@@ -105,8 +102,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
     try {
       await maint.addBikePartDef(formName.trim(), x, y, formMandatory, Array.from(formTagIds));
       setDetail({ kind: "none" });
-      await refreshCatalog();
-      onDataChanged();
+      await invalidateMaintenance();
     } catch (err) {
       setPanelError(describeError(err));
     }
@@ -121,8 +117,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       await maint.updateBikePartDef(def.id, formName.trim(), def.x, def.y, formMandatory, Array.from(formTagIds));
       setDetail({ kind: "none" });
       setRepositioningDefId(null);
-      await refreshCatalog();
-      onDataChanged();
+      await invalidateMaintenance();
     } catch (err) {
       setPanelError(describeError(err));
     }
@@ -134,8 +129,7 @@ export function PartsLocationsView({ refreshKey, onDataChanged }: PartsLocations
       await maint.deleteBikePartDef(def.id);
       setDetail({ kind: "none" });
       setRepositioningDefId(null);
-      await refreshCatalog();
-      onDataChanged();
+      await invalidateMaintenance();
     } catch (err) {
       if (err instanceof BikePartDefInUseError) {
         setPanelError("Cet emplacement a un historique de montage et ne peut pas être supprimé.");

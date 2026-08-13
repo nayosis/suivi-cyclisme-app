@@ -1,14 +1,13 @@
+import { Link } from "@tanstack/react-router";
 import { formatDate, formatNumber } from "../format";
 import type { SlotMount } from "../types";
 
 interface SlotHistoryTimelineProps {
   history: SlotMount[] | null;
-  /** Ouvre la fiche de la pièce cliquée, si fourni. */
-  onSelectInstance?: (instanceId: number) => void;
 }
 
 /** Frise chronologique des pièces montées sur un emplacement donné d'un vélo donné, avec le kilométrage parcouru par période. */
-export function SlotHistoryTimeline({ history, onSelectInstance }: SlotHistoryTimelineProps) {
+export function SlotHistoryTimeline({ history }: SlotHistoryTimelineProps) {
   if (history === null) {
     return <div className="empty-state">Chargement…</div>;
   }
@@ -29,13 +28,9 @@ export function SlotHistoryTimeline({ history, onSelectInstance }: SlotHistoryTi
             </div>
             <div className="timeline__label timeline__label--mount">
               {h.part_instance_name}{" "}
-              {onSelectInstance ? (
-                <button type="button" className="link-button" onClick={() => onSelectInstance(h.part_instance_id)}>
-                  [{h.part_instance_id}]
-                </button>
-              ) : (
-                `[${h.part_instance_id}]`
-              )}
+              <Link to="/maintenance/parts/$partId" params={{ partId: String(h.part_instance_id) }} className="link-button">
+                [{h.part_instance_id}]
+              </Link>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--secondary-ink)" }}>
               {formatNumber(h.total_km)} km · {formatNumber(h.total_elevation_m)} m D+

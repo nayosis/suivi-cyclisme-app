@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { createRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import * as db from "../db";
-import type { Bike, Ride, RideInput } from "../types";
+import type { Ride, RideInput } from "../types";
 import { RideFormModal } from "../components/RideFormModal";
 import { StatTile } from "../components/StatTile";
 import { Switch } from "../components/Switch";
@@ -14,32 +16,40 @@ import {
   formatNumber,
   formatSpeed,
 } from "../format";
+import { cyclingKey, invalidateCycling } from "../query-client";
+import { rootRoute } from "../routes/root";
 
-interface RidesPageProps {
-  refreshKey: number;
-  onDataChanged: () => void;
+interface RidesSearch {
+  month?: string;
+  all?: boolean;
 }
 
-export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
-  const [rides, setRides] = useState<Ride[]>([]);
-  const [bikes, setBikes] = useState<Bike[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => currentYearMonth());
-  const [showAllRides, setShowAllRides] = useState(false);
+export const Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/rides",
+  validateSearch: (search: Record<string, unknown>): RidesSearch => ({
+    month: typeof search.month === "string" ? search.month : undefined,
+    all: search.all === true || search.all === "true" ? true : undefined,
+  }),
+  component: RidesPage,
+});
+
+function RidesPage() {
+  const { month, all } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const selectedMonth = month ?? currentYearMonth();
+  const showAllRides = all ?? false;
+
+  const ridesQuery = useQuery({ queryKey: [...cyclingKey, "rides"], queryFn: db.listRides });
+  const bikesQuery = useQuery({ queryKey: [...cyclingKey, "bikes"], queryFn: db.listBikes });
+  const rides = ridesQuery.data ?? [];
+  const bikes = bikesQuery.data ?? [];
+
   const [editingRide, setEditingRide] = useState<Ride | null>(null);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
 
-  async function refresh() {
-    const [r, b] = await Promise.all([db.listRides(), db.listBikes()]);
-    setRides(r);
-    setBikes(b);
-  }
-
-  useEffect(() => {
-    refresh();
-  }, [refreshKey]);
-
   function goToMonth(delta: number) {
-    setSelectedMonth((current) => addMonths(current, delta));
+    navigate({ search: (prev) => ({ ...prev, month: addMonths(selectedMonth, delta) }) });
   }
 
   const filteredRides = useMemo(() => {
@@ -96,8 +106,7 @@ export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
   async function handleAdd(input: RideInput) {
     await db.addRide(input);
     setModal(null);
-    await refresh();
-    onDataChanged();
+    await invalidateCycling();
   }
 
   async function handleEdit(input: RideInput) {
@@ -105,8 +114,7 @@ export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
     await db.updateRide(editingRide.id, input);
     setModal(null);
     setEditingRide(null);
-    await refresh();
-    onDataChanged();
+    await invalidateCycling();
   }
 
   async function handleDelete() {
@@ -114,8 +122,7 @@ export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
     await db.deleteRide(editingRide.id);
     setModal(null);
     setEditingRide(null);
-    await refresh();
-    onDataChanged();
+    await invalidateCycling();
   }
 
   return (
@@ -133,7 +140,10 @@ export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
               >
                 ‹
               </button>
-              <MonthPicker value={selectedMonth} onChange={setSelectedMonth} />
+              <MonthPicker
+                value={selectedMonth}
+                onChange={(m) => navigate({ search: (prev) => ({ ...prev, month: m }) })}
+              />
               <button
                 className="btn-icon"
                 onClick={() => goToMonth(1)}
@@ -146,7 +156,11 @@ export function RidesPage({ refreshKey, onDataChanged }: RidesPageProps) {
           )}
         </div>
         <div className="rides-header__right">
-          <Switch checked={showAllRides} onChange={setShowAllRides} label="Voir toutes les sorties" />
+          <Switch
+            checked={showAllRides}
+            onChange={(v) => navigate({ search: (prev) => ({ ...prev, all: v || undefined }) })}
+            label="Voir toutes les sorties"
+          />
         </div>
       </div>
 

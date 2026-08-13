@@ -1,15 +1,20 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { createRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import * as db from "../db";
 import { BikeInUseError } from "../db";
 import * as maint from "../maintenance-db";
 import type { Bike } from "../types";
 import { BikeFormModal } from "../components/BikeFormModal";
 import { formatDate, formatNumber } from "../format";
+import { cyclingKey, invalidateCycling, invalidateMaintenance } from "../query-client";
+import { rootRoute } from "../routes/root";
 
-interface BikesPageProps {
-  refreshKey: number;
-  onDataChanged: () => void;
-}
+export const Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/bikes",
+  component: BikesPage,
+});
 
 interface BikeStats {
   distance_km: number;
@@ -19,28 +24,25 @@ interface BikeStats {
 
 const EMPTY_STATS: BikeStats = { distance_km: 0, elevation_m: 0, ride_count: 0 };
 
-export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
-  const [bikes, setBikes] = useState<Bike[]>([]);
-  const [statsByBike, setStatsByBike] = useState<Map<string, BikeStats>>(new Map());
+function BikesPage() {
+  const bikesQuery = useQuery({ queryKey: [...cyclingKey, "bikes"], queryFn: db.listBikes });
+  const byBikeQuery = useQuery({ queryKey: [...cyclingKey, "byBike"], queryFn: db.getByBike });
+  const bikes = bikesQuery.data ?? [];
+  const statsByBike = new Map((byBikeQuery.data ?? []).map((s) => [s.label, s]));
+
   const [editingBike, setEditingBike] = useState<Bike | null>(null);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
 
-  async function refresh() {
-    const [bikeList, stats] = await Promise.all([db.listBikes(), db.getByBike()]);
-    setBikes(bikeList);
-    setStatsByBike(new Map(stats.map((s) => [s.label, s])));
+  /** Une pièce d'origine mandatory est instanciée à la création : ça touche aussi le domaine Entretien. */
+  async function invalidateBoth() {
+    await Promise.all([invalidateCycling(), invalidateMaintenance()]);
   }
-
-  useEffect(() => {
-    refresh();
-  }, [refreshKey]);
 
   async function handleAdd(name: string, color: string, purchaseDate: string, purchaseKm: number) {
     const bikeId = await db.addBike(name, color, purchaseDate, purchaseKm);
     await maint.instantiateMandatoryPartsForBike(bikeId);
     setModal(null);
-    await refresh();
-    onDataChanged();
+    await invalidateBoth();
   }
 
   async function handleEdit(name: string, color: string, purchaseDate: string, purchaseKm: number) {
@@ -48,8 +50,7 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
     await db.updateBike(editingBike.id, name, color, purchaseDate, purchaseKm);
     setModal(null);
     setEditingBike(null);
-    await refresh();
-    onDataChanged();
+    await invalidateBoth();
   }
 
   async function handleDelete() {
@@ -64,8 +65,7 @@ export function BikesPage({ refreshKey, onDataChanged }: BikesPageProps) {
     }
     setModal(null);
     setEditingBike(null);
-    await refresh();
-    onDataChanged();
+    await invalidateBoth();
   }
 
   return (
