@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as db from "../db";
 import type { DayValue, YearBikeRow } from "../db";
-import type { Totals } from "../types";
+import { DEFAULT_BIKE_COLOR, type Totals } from "../types";
 import { StatTile } from "../components/StatTile";
 import { type BreakdownRowData } from "../components/BreakdownList";
 import { StackedBarChart } from "../components/StackedBarChart";
@@ -100,6 +100,24 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
     return byBike.map((b) => ({ label: b.label, value: pick(b), color: b.color }));
   }
 
+  const yearRows = byYearAndBike
+    .filter((r) => r.year === String(calendarYear))
+    .sort((a, b) => b.distance_km - a.distance_km);
+  const yearTotals: Totals = yearRows.reduce(
+    (acc, r) => ({
+      distance_km: acc.distance_km + r.distance_km,
+      elevation_m: acc.elevation_m + r.elevation_m,
+      ride_count: acc.ride_count + r.ride_count,
+      duration_minutes: acc.duration_minutes + r.duration_minutes,
+    }),
+    { distance_km: 0, elevation_m: 0, ride_count: 0, duration_minutes: 0 }
+  );
+
+  function yearBreakdownFor(pick: (r: YearBikeRow) => string): BreakdownRowData[] | undefined {
+    if (yearRows.length === 0) return undefined;
+    return yearRows.map((r) => ({ label: r.bike_name, value: pick(r), color: bikeColors[r.bike_name] ?? DEFAULT_BIKE_COLOR }));
+  }
+
   return (
     <div>
       <div className="stat-tiles">
@@ -158,7 +176,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        Détail par mois
+        Informations de l'année {calendarYear}
         <select
           value={calendarYear}
           onChange={(e) => setCalendarYear(Number(e.target.value))}
@@ -179,6 +197,32 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
           ))}
         </select>
       </div>
+
+      <div className="section-title" style={{ marginTop: 0 }}>Récap de l'année</div>
+      <div className="stat-tiles">
+        <StatTile
+          label="Distance totale"
+          value={`${formatNumber(yearTotals.distance_km)} km`}
+          breakdown={yearBreakdownFor((r) => `${formatNumber(r.distance_km)} km`)}
+        />
+        <StatTile
+          label="Dénivelé total"
+          value={`${formatNumber(yearTotals.elevation_m)} m`}
+          breakdown={yearBreakdownFor((r) => `${formatNumber(r.elevation_m)} m`)}
+        />
+        <StatTile
+          label="Nombre de sorties"
+          value={formatNumber(yearTotals.ride_count)}
+          breakdown={yearBreakdownFor((r) => formatNumber(r.ride_count))}
+        />
+        <StatTile
+          label="Durée totale"
+          value={`${formatNumber(yearTotals.duration_minutes / 60, 1)} h`}
+          breakdown={yearBreakdownFor((r) => `${formatNumber(r.duration_minutes / 60, 1)} h`)}
+        />
+      </div>
+
+      <div className="section-title">Détail par mois</div>
       <div className="month-cards-row">
         {monthStats.map((m) => (
           <MonthCard
