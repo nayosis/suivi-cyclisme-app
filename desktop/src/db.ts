@@ -27,6 +27,24 @@ CREATE TABLE IF NOT EXISTS rides (
     bike_id          INTEGER NOT NULL REFERENCES bikes(id)
 );
 
+-- Catalogue de parcours types (independant des sorties deja enregistrees) :
+-- libelle, commune de depart, distance, denivele, orientation generale par
+-- rapport a la commune de depart, un lien optionnel vers un site, le contenu
+-- brut (XML) d'un fichier GPX importe ou calcule (pour la carte de la
+-- fiche), et les points de passage bruts (JSON) ayant servi a le dessiner/
+-- calculer, pour pouvoir reprendre l'edition du trace plus tard.
+CREATE TABLE IF NOT EXISTS parcours (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    start_town     TEXT NOT NULL,
+    distance_km    REAL NOT NULL,
+    elevation_m    INTEGER NOT NULL,
+    direction      TEXT NOT NULL,
+    site_url       TEXT,
+    gpx_data       TEXT,
+    waypoints_json TEXT
+);
+
 -- Catalogue des emplacements du velo (partage par tous les velos), positionnes
 -- sur le schema affiche dans l'onglet Entretien. mandatory = un exemplaire est
 -- automatiquement cree pour chaque velo (existant ou futur) des que cet
@@ -167,6 +185,15 @@ export async function getDb(): Promise<Database> {
     // Migration : les bases créées avant l'ajout du kilométrage à l'achat n'ont pas cette colonne.
     if (!columns.some((c) => c.name === "purchase_km")) {
       await db.execute("ALTER TABLE bikes ADD COLUMN purchase_km REAL NOT NULL DEFAULT 0");
+    }
+    // Migration : les parcours créés avant l'ajout de l'import GPX n'ont pas cette colonne.
+    const parcoursColumns = await db.select<{ name: string }[]>("PRAGMA table_info(parcours)");
+    if (parcoursColumns.length > 0 && !parcoursColumns.some((c) => c.name === "gpx_data")) {
+      await db.execute("ALTER TABLE parcours ADD COLUMN gpx_data TEXT");
+    }
+    // Migration : les parcours créés avant l'ajout du traceur d'itinéraire n'ont pas cette colonne.
+    if (parcoursColumns.length > 0 && !parcoursColumns.some((c) => c.name === "waypoints_json")) {
+      await db.execute("ALTER TABLE parcours ADD COLUMN waypoints_json TEXT");
     }
     return db;
   })();

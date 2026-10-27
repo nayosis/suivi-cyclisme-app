@@ -1,5 +1,6 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { GearIcon } from "../components/GearIcon";
+import { OrsQuotaIndicator } from "../components/OrsQuotaIndicator";
 
 /** Route racine : porte la barre de navigation, commune à tout l'app. */
 export const rootRoute = createRootRoute({
@@ -20,9 +21,13 @@ function RootLayout() {
         <Link to="/bikes" className="app-nav__tab" activeProps={{ className: "active" }}>
           Vélos
         </Link>
+        <Link to="/parcours" className="app-nav__tab" activeProps={{ className: "active" }}>
+          Parcours
+        </Link>
         <Link to="/maintenance" className="app-nav__tab" activeProps={{ className: "active" }}>
           Entretien
         </Link>
+        <OrsQuotaIndicator />
         <Link
           to="/options"
           className="app-nav__tab app-nav__tab--icon"

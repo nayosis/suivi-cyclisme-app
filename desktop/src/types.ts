@@ -37,6 +37,61 @@ export interface RideInput {
   bike_id: number;
 }
 
+/**
+ * Les 8 points cardinaux/intercardinaux, dans l'ordre de la rose des vents —
+ * utilisé pour indiquer l'orientation générale d'un parcours par rapport à
+ * sa commune de départ.
+ */
+export const DIRECTIONS = [
+  { code: "N", label: "Nord", arrow: "↑" },
+  { code: "NE", label: "Nord-Est", arrow: "↗" },
+  { code: "E", label: "Est", arrow: "→" },
+  { code: "SE", label: "Sud-Est", arrow: "↘" },
+  { code: "S", label: "Sud", arrow: "↓" },
+  { code: "SO", label: "Sud-Ouest", arrow: "↙" },
+  { code: "O", label: "Ouest", arrow: "←" },
+  { code: "NO", label: "Nord-Ouest", arrow: "↖" },
+] as const;
+
+export type Direction = (typeof DIRECTIONS)[number]["code"];
+
+/** Un point de passage brut posé sur la carte pour dessiner un itinéraire (avant calcul via OpenRouteService). */
+export interface Waypoint {
+  lat: number;
+  lon: number;
+}
+
+/** Un parcours du catalogue : un itinéraire type, indépendant des sorties déjà enregistrées. */
+export interface Parcours {
+  id: number;
+  name: string;
+  start_town: string;
+  distance_km: number;
+  elevation_m: number;
+  direction: Direction;
+  /** Lien vers un site décrivant le parcours (ex. Openrunner, Komoot), optionnel. */
+  site_url: string | null;
+  /** Contenu brut (XML) du fichier GPX importé ou calculé, `null` si aucun tracé n'est associé. */
+  gpx_data: string | null;
+  /**
+   * Points de passage bruts ayant servi à dessiner/calculer `gpx_data` sur la
+   * carte, pour pouvoir reprendre l'édition du tracé plus tard. `null` si le
+   * tracé vient d'un fichier importé (ou n'existe pas).
+   */
+  waypoints: Waypoint[] | null;
+}
+
+export interface ParcoursInput {
+  name: string;
+  start_town: string;
+  distance_km: number;
+  elevation_m: number;
+  direction: Direction;
+  site_url: string | null;
+  gpx_data: string | null;
+  waypoints: Waypoint[] | null;
+}
+
 export interface Totals {
   distance_km: number;
   elevation_m: number;

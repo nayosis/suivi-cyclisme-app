@@ -4,6 +4,10 @@ import { maintenanceRoute } from "./routes/maintenance-layout";
 import { Route as DashboardRoute } from "./pages/DashboardPage";
 import { Route as RidesRoute } from "./pages/RidesPage";
 import { Route as BikesRoute } from "./pages/BikesPage";
+import { Route as ParcoursRoute } from "./pages/ParcoursPage";
+import { Route as ParcoursNewRoute } from "./pages/ParcoursNewPage";
+import { Route as ParcoursViewRoute } from "./pages/ParcoursViewPage";
+import { Route as ParcoursEditRoute } from "./pages/ParcoursEditPage";
 import { Route as OptionsRoute } from "./pages/OptionsPage";
 import { Route as MaintenanceListRoute } from "./pages/MaintenanceListPage";
 import { Route as MaintenancePartsRoute } from "./pages/MaintenancePartsPage";
@@ -25,6 +29,10 @@ const routeTree = rootRoute.addChildren([
   DashboardRoute,
   RidesRoute,
   BikesRoute,
+  ParcoursRoute,
+  ParcoursNewRoute,
+  ParcoursViewRoute,
+  ParcoursEditRoute,
   OptionsRoute,
   maintenanceRoute.addChildren([MaintenanceListRoute, MaintenancePartsRoute, MaintenanceLocationsRoute]),
   MaintenanceNewRoute,

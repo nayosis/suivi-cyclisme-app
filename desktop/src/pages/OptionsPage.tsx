@@ -6,6 +6,8 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { useTheme, type ThemeMode } from "../theme-context";
 import { useHeatmapColor } from "../heatmap-color-context";
+import { useOrsApiKey, useOrsQuota } from "../ors-context";
+import { formatOrsQuota } from "../ors-quota";
 import { errorMessage } from "../format";
 import { ResetDataModal } from "../components/ResetDataModal";
 import { CreateDatabaseModal } from "../components/CreateDatabaseModal";
@@ -50,6 +52,8 @@ function OptionsPage() {
   const { mode, setMode, resolvedDark } = useTheme();
   const { color: heatmapColor, setColor: setHeatmapColor } = useHeatmapColor();
   const heatmapColorValue = heatmapColor ?? (resolvedDark ? ACCENT_FALLBACK.dark : ACCENT_FALLBACK.light);
+  const { apiKey: orsApiKey, setApiKey: setOrsApiKey } = useOrsApiKey();
+  const orsQuota = useOrsQuota();
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [dataMessage, setDataMessage] = useState<StatusMessage | null>(null);
   const [dbMessage, setDbMessage] = useState<StatusMessage | null>(null);
@@ -214,6 +218,47 @@ function OptionsPage() {
                 Réinitialiser
               </button>
             )}
+          </div>
+        </div>
+      </div>
+
+      <div className="section-title">OpenRouteService</div>
+      <div className="card options-card">
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Clé API</div>
+            <div className="options-row__hint">
+              Nécessaire pour tracer un itinéraire sur la carte d'un parcours (calcul
+              collé au réseau routier/cyclable réel). Créez une clé gratuite sur{" "}
+              openrouteservice.org/dev/#/signup, puis collez-la ici.
+            </div>
+          </div>
+          <input
+            type="password"
+            className="select-input"
+            style={{ minWidth: 260 }}
+            placeholder="Clé API OpenRouteService"
+            value={orsApiKey ?? ""}
+            onChange={(e) => setOrsApiKey(e.target.value)}
+            aria-label="Clé API OpenRouteService"
+          />
+        </div>
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Quota</div>
+            <div className="options-row__hint">
+              Basé sur les en-têtes renvoyés par le dernier appel à l'API (calcul
+              d'itinéraire ou détection de commune) — non garanti par tous les
+              endpoints, et pouvant être décalé par rapport au tableau de bord
+              OpenRouteService.
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            {formatOrsQuota(orsQuota).map((line, i) => (
+              <div key={i} className={i === 0 ? undefined : "options-row__hint"}>
+                {line}
+              </div>
+            ))}
           </div>
         </div>
       </div>

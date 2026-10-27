@@ -29,12 +29,19 @@ export const cyclingKey = ["cycling"] as const;
  */
 export const maintenanceKey = ["maintenance"] as const;
 
+/** Domaine « parcours » : le catalogue de parcours types, indépendant des vélos/sorties/entretien. */
+export const parcoursKey = ["parcours"] as const;
+
 export function invalidateCycling() {
   return queryClient.invalidateQueries({ queryKey: cyclingKey });
 }
 
 export function invalidateMaintenance() {
   return queryClient.invalidateQueries({ queryKey: maintenanceKey });
+}
+
+export function invalidateParcours() {
+  return queryClient.invalidateQueries({ queryKey: parcoursKey });
 }
 
 /** À utiliser après un changement de base de données (bascule, import, réinitialisation) : plus rien du cache n'est valide. */
