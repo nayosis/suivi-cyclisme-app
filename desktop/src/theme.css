@@ -1918,3 +1918,421 @@ button {
   color: var(--secondary-ink);
   font-style: italic;
 }
+
+/* ---------- Encart d'un emplacement (formulaire de maintenance) ---------- */
+
+.parts-locations--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.parts-locations--stacked .parts-locations__main {
+  flex: none;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.parts-locations--stacked .parts-locations__panel {
+  flex: none;
+  min-width: 0;
+}
+
+.slot-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.slot-panel__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.segmented--wrap {
+  flex-wrap: wrap;
+}
+
+.segmented__option--danger.active {
+  color: var(--danger);
+}
+
+.slot-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .slot-change {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.slot-part {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--page);
+}
+
+.slot-part--old,
+.slot-part--empty {
+  border-style: dashed;
+}
+
+.slot-part--new {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.slot-part--gone .slot-part__name {
+  opacity: 0.65;
+}
+
+.slot-part__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted-ink);
+}
+
+.slot-part__name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.slot-part__name--muted {
+  color: var(--secondary-ink);
+}
+
+.slot-part__sub {
+  font-size: 12px;
+  color: var(--secondary-ink);
+}
+
+.slot-part .field {
+  align-self: stretch;
+}
+
+.slot-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.slot-pill--scrap {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
+.slot-pill--keep {
+  background: var(--surface-hover);
+  color: var(--secondary-ink);
+}
+
+.slot-recap {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--secondary-ink);
+}
+
+.slot-recap strong {
+  color: var(--primary-ink);
+}
+
+/* ---------- Page de maintenance : formulaire à gauche, liste des changements à droite ---------- */
+
+.maintenance-edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .maintenance-edit-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.maintenance-edit-layout__main {
+  max-width: none;
+}
+
+.maintenance-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.maintenance-changes__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.maintenance-change-card {
+  padding: 16px 18px;
+}
+
+.maintenance-change-card--active {
+  border-color: var(--accent);
+}
+
+/* ---------- Menu d'actions rapides d'une pièce ---------- */
+
+.part-actions__button {
+  margin-left: 6px;
+  min-width: 32px;
+  letter-spacing: 1px;
+}
+
+.part-actions__menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 250px;
+  padding: 6px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+}
+
+.part-actions__menu--sub {
+  position: absolute;
+  top: -6px;
+  right: calc(100% + 4px);
+  min-width: 210px;
+}
+
+.part-actions__fly {
+  position: relative;
+}
+
+.part-actions__item,
+.part-actions__tag {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.part-actions__item:hover:not(:disabled),
+.part-actions__tag:hover {
+  background: var(--surface-hover);
+}
+
+.part-actions__item:disabled {
+  color: var(--muted-ink);
+  cursor: not-allowed;
+}
+
+.part-actions__item small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--muted-ink);
+}
+
+.part-actions__item--danger {
+  color: var(--danger);
+}
+
+.part-actions__item--sub::after {
+  content: "›";
+  margin-left: auto;
+  color: var(--muted-ink);
+  font-size: 16px;
+}
+
+.part-actions__sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
+}
+
+.part-actions__check {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: #fff;
+}
+
+.part-actions__check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.part-actions__check.on::after {
+  content: "✓";
+}
+
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--primary-ink);
+  color: var(--page);
+  box-shadow: var(--shadow-elevated);
+}
+
+.undo-toast button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- Liste de choix d'une pièce à installer ---------- */
+
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  margin-top: 8px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.pick-item {
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--primary-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pick-item:hover {
+  border-color: var(--accent);
+}
+
+.pick-item[aria-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}
+
+.pick-item--new {
+  border-style: dashed;
+}
+
+.pick-item__id {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pick-item__name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pick-item__radio {
+  justify-self: end;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+}
+
+.pick-item[aria-selected="true"] .pick-item__radio {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 50%);
+}
+
+.pick-item__meta {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--secondary-ink);
+}
+
+.pick-item__meta .tag-chip {
+  margin: 0;
+}
+
+.pick-item__none {
+  color: var(--muted-ink);
+  font-style: italic;
+}
+
+/* Carte de pièce non interactive (liste des changements), même présentation que la liste de choix. */
+.pick-item--static {
+  align-self: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: default;
+}
+
+.pick-item--static:hover {
+  border-color: var(--border);
+}
+
+.pick-item--static .pick-item__meta {
+  grid-column: 1 / -1;
+}

@@ -306,6 +306,22 @@ export async function updatePartInstance(
   }
 }
 
+/** Renseigne (ou efface avec `null`) la date de mise au rebut d'un exemplaire, sans toucher aux autres champs. */
+export async function setPartInstanceRetiredDate(id: number, retiredDate: string | null): Promise<void> {
+  const db = await getDb();
+  await db.execute("UPDATE part_instances SET retired_date = ? WHERE id = ?", [retiredDate, id]);
+}
+
+/** Ajoute ou retire un tag sur un exemplaire, sans toucher à ses autres tags. */
+export async function setPartInstanceTag(id: number, tagId: number, on: boolean): Promise<void> {
+  const db = await getDb();
+  if (on) {
+    await db.execute("INSERT OR IGNORE INTO part_instance_tags (part_instance_id, tag_id) VALUES (?, ?)", [id, tagId]);
+  } else {
+    await db.execute("DELETE FROM part_instance_tags WHERE part_instance_id = ? AND tag_id = ?", [id, tagId]);
+  }
+}
+
 /**
  * Supprime un exemplaire de pièce.
  * @throws {PartInstanceInUseError} s'il a le moindre historique de montage —
@@ -444,6 +460,12 @@ export async function updateMaintenance(id: number, input: MaintenanceInput): Pr
     "UPDATE part_mounts SET bike_id = ?, mounted_at = ? WHERE mounted_by_maintenance_id = ?",
     [input.bike_id, input.date, id]
   );
+  // Une pièce « retirée et mise au rebut » par cette maintenance suit la nouvelle date.
+  await db.execute(
+    `UPDATE part_instances SET retired_date = ?
+     WHERE retired_date IN (SELECT unmounted_at FROM part_mounts WHERE part_instance_id = part_instances.id AND removed_by_maintenance_id = ?)`,
+    [input.date, id]
+  );
   await db.execute(
     "UPDATE part_mounts SET unmounted_at = ? WHERE removed_by_maintenance_id = ?",
     [input.date, id]
@@ -451,12 +473,27 @@ export async function updateMaintenance(id: number, input: MaintenanceInput): Pr
 }
 
 /**
+ * Remet en service les pièces qu'une maintenance a retirées **et mises au
+ * rebut** : leur date de rebut coïncide avec la date de ce retrait.
+ */
+async function clearRetirementsScrappedBy(maintenanceId: number): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE part_instances SET retired_date = NULL
+     WHERE retired_date IN (SELECT unmounted_at FROM part_mounts WHERE part_instance_id = part_instances.id AND removed_by_maintenance_id = ?)`,
+    [maintenanceId]
+  );
+}
+
+/**
  * Supprime une maintenance et annule ses effets sur les pièces :
  * - les périodes de montage qu'elle a **créées** (installations) sont supprimées ;
- * - les périodes de montage qu'elle a **closes** (désinstallations) sont rouvertes.
+ * - les périodes de montage qu'elle a **closes** (désinstallations) sont rouvertes,
+ *   et les pièces qu'elle avait mises au rebut redeviennent actives.
  */
 export async function deleteMaintenance(id: number): Promise<void> {
   const db = await getDb();
+  await clearRetirementsScrappedBy(id);
   await db.execute("DELETE FROM part_mounts WHERE mounted_by_maintenance_id = ?", [id]);
   await db.execute(
     "UPDATE part_mounts SET unmounted_at = ?, removed_by_maintenance_id = ? WHERE removed_by_maintenance_id = ?",
@@ -513,7 +550,8 @@ const PART_MOUNT_SELECT = `
   SELECT pm.id, pm.part_instance_id, pi.name AS part_instance_name,
          pm.bike_part_def_id, pd.name AS bike_part_def_name,
          pm.bike_id, b.name AS bike_name, pm.mounted_at, pm.unmounted_at,
-         pm.mounted_by_maintenance_id, pm.removed_by_maintenance_id
+         pm.mounted_by_maintenance_id, pm.removed_by_maintenance_id,
+         pi.retired_date AS part_instance_retired_date
   FROM part_mounts pm
   JOIN part_instances pi ON pi.id = pm.part_instance_id
   JOIN bike_part_defs pd ON pd.id = pm.bike_part_def_id
@@ -605,12 +643,14 @@ export async function installPart(
 
 /**
  * Désinstalle (ferme la période de montage ouverte), dans le cadre d'une maintenance ou directement.
+ * Avec `scrap`, l'exemplaire est aussi mis au rebut à cette date.
  * @throws {InvalidMountDateError} si `unmountedAt` est antérieur à la pose de ce montage.
  */
 export async function uninstallPart(
   partMountId: number,
   maintenanceId: number | null,
-  unmountedAt: string
+  unmountedAt: string,
+  scrap = false
 ): Promise<void> {
   await assertChronologicalUninstall(partMountId, unmountedAt);
   const db = await getDb();
@@ -618,6 +658,12 @@ export async function uninstallPart(
     "UPDATE part_mounts SET unmounted_at = ?, removed_by_maintenance_id = ? WHERE id = ? AND unmounted_at IS NULL",
     [unmountedAt, maintenanceId, partMountId]
   );
+  if (scrap) {
+    await db.execute(
+      "UPDATE part_instances SET retired_date = ? WHERE id = (SELECT part_instance_id FROM part_mounts WHERE id = ?)",
+      [unmountedAt, partMountId]
+    );
+  }
 }
 
 /** Annule une installation créée par une maintenance (supprime la période de montage). */
@@ -626,9 +672,14 @@ export async function removeMountRecord(partMountId: number): Promise<void> {
   await db.execute("DELETE FROM part_mounts WHERE id = ?", [partMountId]);
 }
 
-/** Annule une désinstallation : rouvre la période de montage. */
+/** Annule une désinstallation : rouvre la période de montage (et remet en service la pièce si ce retrait l'avait mise au rebut). */
 export async function reopenMount(partMountId: number): Promise<void> {
   const db = await getDb();
+  await db.execute(
+    `UPDATE part_instances SET retired_date = NULL
+     WHERE id = (SELECT part_instance_id FROM part_mounts WHERE id = ? AND unmounted_at = part_instances.retired_date)`,
+    [partMountId]
+  );
   await db.execute(
     "UPDATE part_mounts SET unmounted_at = ?, removed_by_maintenance_id = ? WHERE id = ?",
     [null, null, partMountId]

@@ -18,6 +18,12 @@ interface PartInstanceFormModalProps {
   ) => Promise<void> | void;
   onDelete?: () => Promise<void> | void;
   onClose: () => void;
+  /** Date d'achat préremplie à la création (ignorée à la modification). */
+  defaultPurchaseDate?: string;
+  /** Masque la date de mise au rebut (ex. création d'une pièce qu'on s'apprête à monter). */
+  hideRetiredDate?: boolean;
+  /** Libellé du bouton de validation (défaut : « Enregistrer »). */
+  submitLabel?: string;
 }
 
 /** Création ou modification d'un exemplaire de pièce (nom, prix, dates d'achat/mise au rebut, tags). */
@@ -28,12 +34,15 @@ export function PartInstanceFormModal({
   onSave,
   onDelete,
   onClose,
+  defaultPurchaseDate,
+  hideRetiredDate,
+  submitLabel = "Enregistrer",
 }: PartInstanceFormModalProps) {
   const [name, setName] = useState(instance?.name ?? "");
   const [purchaseCost, setPurchaseCost] = useState(
     instance?.purchase_cost != null ? String(instance.purchase_cost) : ""
   );
-  const [purchaseDate, setPurchaseDate] = useState(instance?.purchase_date ?? "");
+  const [purchaseDate, setPurchaseDate] = useState(instance?.purchase_date ?? defaultPurchaseDate ?? "");
   const [retiredDate, setRetiredDate] = useState(instance?.retired_date ?? "");
   const [tagIds, setTagIds] = useState<Set<number>>(new Set(initialTagIds ?? []));
   const [error, setError] = useState<string | null>(null);
@@ -110,15 +119,17 @@ export function PartInstanceFormModal({
               onChange={(e) => setPurchaseDate(e.target.value)}
             />
           </div>
-          <div className="field">
-            <label htmlFor="part-instance-retired-date">Date de mise au rebut</label>
-            <input
-              id="part-instance-retired-date"
-              type="date"
-              value={retiredDate}
-              onChange={(e) => setRetiredDate(e.target.value)}
-            />
-          </div>
+          {!hideRetiredDate && (
+            <div className="field">
+              <label htmlFor="part-instance-retired-date">Date de mise au rebut</label>
+              <input
+                id="part-instance-retired-date"
+                type="date"
+                value={retiredDate}
+                onChange={(e) => setRetiredDate(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         {allTags.length > 0 && (
           <div className="field">
@@ -152,7 +163,7 @@ export function PartInstanceFormModal({
               Annuler
             </button>
             <button type="submit" className="btn">
-              Enregistrer
+              {submitLabel}
             </button>
           </div>
         </div>

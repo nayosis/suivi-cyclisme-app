@@ -28,6 +28,8 @@ export const Route = createRoute({
 interface SummaryPart {
   id: number;
   name: string;
+  /** Pièce retirée et mise au rebut par cette maintenance (sa date de rebut = la date du retrait). */
+  scrapped?: boolean;
 }
 
 interface MaintenanceSummaryLine {
@@ -53,7 +55,13 @@ function buildMaintenanceSummary(maintenanceId: number, mounts: PartMount[]): Ma
       const rem = removed.get(defId);
       return {
         slot: inst?.bike_part_def_name ?? rem?.bike_part_def_name ?? "",
-        before: rem ? { id: rem.part_instance_id, name: rem.part_instance_name } : null,
+        before: rem
+          ? {
+              id: rem.part_instance_id,
+              name: rem.part_instance_name,
+              scrapped: rem.part_instance_retired_date != null && rem.part_instance_retired_date === rem.unmounted_at,
+            }
+          : null,
         after: inst ? { id: inst.part_instance_id, name: inst.part_instance_name } : null,
       };
     })
@@ -245,6 +253,14 @@ function MaintenanceListPage() {
                                         >
                                           [{line.after.id}]
                                         </Link>
+                                      </>
+                                    )}
+                                    {line.before && (
+                                      <>
+                                        {" "}
+                                        <span className={`slot-pill ${line.before.scrapped ? "slot-pill--scrap" : "slot-pill--keep"}`}>
+                                          {line.before.scrapped ? "Mise au rebut" : "Gardée en stock"}
+                                        </span>
                                       </>
                                     )}
                                   </div>

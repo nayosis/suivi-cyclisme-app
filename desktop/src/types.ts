@@ -190,6 +190,8 @@ export interface PartMount {
   unmounted_at: string | null;
   mounted_by_maintenance_id: number | null;
   removed_by_maintenance_id: number | null;
+  /** Date de mise au rebut de l'exemplaire (`part_instances.retired_date`) ; égale à `unmounted_at` quand le retrait s'est fait « et mis au rebut ». */
+  part_instance_retired_date: string | null;
 }
 
 /**

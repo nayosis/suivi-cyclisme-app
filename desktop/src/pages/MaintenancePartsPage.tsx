@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import * as db from "../db";
@@ -6,6 +6,7 @@ import * as maint from "../maintenance-db";
 import type { PartTag } from "../types";
 import { PartInstanceFormModal } from "../components/PartInstanceFormModal";
 import { PartTagFormModal } from "../components/PartTagFormModal";
+import { PartActionsMenu } from "../components/PartActionsMenu";
 import { formatDate, formatNumber, todayIso } from "../format";
 import { cyclingKey, maintenanceKey, invalidateMaintenance } from "../query-client";
 import { maintenanceRoute } from "../routes/maintenance-layout";
@@ -59,6 +60,45 @@ function MaintenancePartsPage() {
   ) {
     await maint.addPartInstance(name, purchaseCost, purchaseDate, retiredDate, tagIds);
     setAddingInstance(false);
+    await invalidateMaintenance();
+  }
+
+  // Message de confirmation avec « Annuler », affiché quelques secondes après une action rapide.
+  const [toast, setToast] = useState<{ message: string; undo: () => Promise<void> } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  async function handleScrap(id: number, name: string, previousRetiredDate: string | null) {
+    await maint.setPartInstanceRetiredDate(id, todayIso());
+    setToast({
+      message: `« ${name} » mise au rebut le ${formatDate(todayIso())}`,
+      undo: () => maint.setPartInstanceRetiredDate(id, previousRetiredDate),
+    });
+    await invalidateMaintenance();
+  }
+
+  async function handleRestore(id: number, name: string, previousRetiredDate: string) {
+    await maint.setPartInstanceRetiredDate(id, null);
+    setToast({
+      message: `« ${name} » remise en service`,
+      undo: () => maint.setPartInstanceRetiredDate(id, previousRetiredDate),
+    });
+    await invalidateMaintenance();
+  }
+
+  async function handleToggleTag(id: number, tagId: number, on: boolean) {
+    await maint.setPartInstanceTag(id, tagId, on);
+    await invalidateMaintenance();
+  }
+
+  async function handleUndo() {
+    if (!toast) return;
+    const { undo } = toast;
+    setToast(null);
+    await undo();
     await invalidateMaintenance();
   }
 
@@ -265,6 +305,16 @@ function MaintenancePartsPage() {
                     >
                       Détails
                     </Link>
+                    <PartActionsMenu
+                      retiredDate={p.retired_date}
+                      mounted={p.currentMount != null}
+                      allTags={partTags}
+                      tagIds={p.tags.map((t) => t.id)}
+                      todayLabel={formatDate(todayIso())}
+                      onScrap={() => handleScrap(p.part_instance_id, p.name, p.retired_date)}
+                      onRestore={() => handleRestore(p.part_instance_id, p.name, p.retired_date!)}
+                      onToggleTag={(tagId, on) => handleToggleTag(p.part_instance_id, tagId, on)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -272,6 +322,15 @@ function MaintenancePartsPage() {
           </table>
         )}
       </div>
+
+      {toast && (
+        <div className="undo-toast" role="status">
+          <span>{toast.message}</span>
+          <button type="button" onClick={handleUndo}>
+            Annuler
+          </button>
+        </div>
+      )}
 
       {addingInstance && (
         <PartInstanceFormModal allTags={partTags} onSave={handleAddInstance} onClose={() => setAddingInstance(false)} />
