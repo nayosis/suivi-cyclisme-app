@@ -40,6 +40,32 @@ export function parseGpx(xml: string): GpxPoint[] {
   return points;
 }
 
+/** Métadonnées d'un GPX exporté depuis OpenRunner. */
+export interface OpenRunnerOrigin {
+  /** Libellé du parcours, sans le suffixe d'identifiant. */
+  name: string;
+  /** Lien public de la fiche du parcours. */
+  url: string;
+}
+
+/**
+ * Détecte un GPX exporté par OpenRunner et en tire le libellé et le lien de la
+ * fiche. OpenRunner nomme la trace `<libellé>-<identifiant>` (ex.
+ * « Condat N- Compains - Murol - Besse-25274923 »).
+ *
+ * @returns `null` si le fichier ne vient pas d'OpenRunner ou si le nom n'a pas ce format.
+ */
+export function extractOpenRunnerOrigin(xml: string): OpenRunnerOrigin | null {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.querySelector("parsererror")) return null;
+  const creator = doc.documentElement.getAttribute("creator") ?? "";
+  if (!/openrunner/i.test(creator)) return null;
+  const trackName = doc.getElementsByTagName("trk")[0]?.getElementsByTagName("name")[0]?.textContent ?? "";
+  const match = /^(.*\S)\s*-(\d{4,})$/.exec(trackName.trim());
+  if (!match) return null;
+  return { name: match[1], url: `https://www.openrunner.com/route-details/${match[2]}` };
+}
+
 const EARTH_RADIUS_KM = 6371;
 
 function toRad(deg: number): number {
@@ -62,6 +88,64 @@ export function computeDistanceKm(points: GpxPoint[]): number {
     total += haversineKm(points[i - 1], points[i]);
   }
   return total;
+}
+
+/** Cap initial (0–360°, 0 = nord, 90 = est) pour aller du point `a` au point `b`. */
+function bearingDeg(a: GpxPoint, b: GpxPoint): number {
+  const dLon = toRad(b.lon - a.lon);
+  const y = Math.sin(dLon) * Math.cos(toRad(b.lat));
+  const x =
+    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Les 8 codes de direction, dans l'ordre des secteurs de 45° à partir du nord (même ordre que `DIRECTIONS`). */
+const SECTOR_CODES = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"] as const;
+
+/** Secteur de 45° (code de `DIRECTIONS`) contenant le cap `deg`. */
+export function bearingToDirection(deg: number): (typeof SECTOR_CODES)[number] {
+  return SECTOR_CODES[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
+/** Direction de la première moitié d'un tracé (« l'aller »). */
+export interface OutboundDirection {
+  /** Cap en degrés (0 = nord, 90 = est) du départ vers le point situé à mi-distance. */
+  bearing: number;
+  /**
+   * Fiabilité entre 0 et 1 : distance en ligne droite divisée par la longueur de
+   * la demi-trace. Proche de 1 = l'aller file droit ; faible = tracé sinueux ou
+   * en boucle, le cap moyen est alors peu représentatif.
+   */
+  straightness: number;
+}
+
+/**
+ * Direction de l'aller : cap entre le départ et le point situé à la moitié de la
+ * distance du tracé. Sert à retrouver les parcours dont on affronte le vent
+ * dans la première moitié de la sortie.
+ *
+ * @returns `null` si le tracé est trop court ou sans étendue exploitable.
+ */
+export function computeOutboundDirection(points: GpxPoint[]): OutboundDirection | null {
+  if (points.length < 2) return null;
+  const total = computeDistanceKm(points);
+  if (total <= 0) return null;
+
+  const half = total / 2;
+  let cumulative = 0;
+  let mid = points.length - 1;
+  for (let i = 1; i < points.length; i++) {
+    cumulative += haversineKm(points[i - 1], points[i]);
+    if (cumulative >= half) {
+      mid = i;
+      break;
+    }
+  }
+
+  const chord = haversineKm(points[0], points[mid]);
+  if (chord <= 0) return null;
+  return { bearing: bearingDeg(points[0], points[mid]), straightness: Math.min(1, chord / cumulative) };
 }
 
 /**

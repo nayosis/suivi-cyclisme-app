@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createRoute } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { exportToFile, importFromFile } from "../data-transfer";
+import { backupToFile, pickBackupFile, restoreFromFile } from "../backup";
 import { useTheme, type ThemeMode } from "../theme-context";
 import { useHeatmapColor } from "../heatmap-color-context";
 import { useOrsApiKey, useOrsQuota } from "../ors-context";
@@ -43,6 +44,39 @@ interface StatusMessage {
   text: string;
 }
 
+type OptionsSectionId = "personnalisation" | "configuration" | "sauvegarde" | "technique";
+
+const OPTIONS_SECTIONS: { id: OptionsSectionId; label: string; hint: string }[] = [
+  { id: "personnalisation", label: "Personnalisation", hint: "Thème, couleurs" },
+  { id: "configuration", label: "Configuration", hint: "Clé API, quota" },
+  { id: "sauvegarde", label: "Sauvegarde et bases", hint: "Sauvegarder, restaurer, bases" },
+  { id: "technique", label: "Technique", hint: "Export, réinitialisation, version" },
+];
+
+const SECTION_STORAGE_KEY = "suivi-cyclisme-options-section";
+
+/** Section affichée, mémorisée entre deux visites de la page. */
+function useOptionsSection(): [OptionsSectionId, (id: OptionsSectionId) => void] {
+  const [section, setSectionState] = useState<OptionsSectionId>(() => {
+    try {
+      const saved = localStorage.getItem(SECTION_STORAGE_KEY);
+      if (OPTIONS_SECTIONS.some((s) => s.id === saved)) return saved as OptionsSectionId;
+    } catch {
+      // stockage indisponible : on repart de la première section
+    }
+    return "personnalisation";
+  });
+  function setSection(id: OptionsSectionId) {
+    setSectionState(id);
+    try {
+      localStorage.setItem(SECTION_STORAGE_KEY, id);
+    } catch {
+      // sans impact
+    }
+  }
+  return [section, setSection];
+}
+
 function StatusText({ message }: { message: StatusMessage | null }) {
   if (!message) return null;
   return <div className={`${message.type}-text`}>{message.text}</div>;
@@ -54,8 +88,10 @@ function OptionsPage() {
   const heatmapColorValue = heatmapColor ?? (resolvedDark ? ACCENT_FALLBACK.dark : ACCENT_FALLBACK.light);
   const { apiKey: orsApiKey, setApiKey: setOrsApiKey } = useOrsApiKey();
   const orsQuota = useOrsQuota();
-  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [busy, setBusy] = useState<"export" | "import" | "backup" | "restore" | null>(null);
   const [dataMessage, setDataMessage] = useState<StatusMessage | null>(null);
+  const [backupMessage, setBackupMessage] = useState<StatusMessage | null>(null);
+  const [section, setSection] = useOptionsSection();
   const [dbMessage, setDbMessage] = useState<StatusMessage | null>(null);
   const [resetMessage, setResetMessage] = useState<StatusMessage | null>(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -86,6 +122,48 @@ function OptionsPage() {
       if (done) setDataMessage({ type: "success", text: "Export réalisé avec succès." });
     } catch (err) {
       setDataMessage({ type: "error", text: errorMessage(err) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleBackup() {
+    setBusy("backup");
+    setBackupMessage(null);
+    try {
+      const done = await backupToFile();
+      if (done) setBackupMessage({ type: "success", text: "Sauvegarde enregistrée avec succès." });
+    } catch (err) {
+      setBackupMessage({ type: "error", text: errorMessage(err) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRestore() {
+    setBackupMessage(null);
+    try {
+      const path = await pickBackupFile();
+      if (!path) return;
+      const dbName = databases.find((d) => d.filename === currentDbFilename)?.name ?? "la base active";
+      if (
+        !confirm(
+          `Restaurer cette sauvegarde remplacera TOUTES les données de « ${dbName} » (vélos, sorties, entretien, parcours…).
+
+L'état actuel est conservé dans une copie de sécurité à côté de la base. Continuer ?`
+        )
+      ) {
+        return;
+      }
+      setBusy("restore");
+      await restoreFromFile(path);
+      await invalidateEverything();
+      setBackupMessage({
+        type: "success",
+        text: "Sauvegarde restaurée. Une copie de sécurité de l'état précédent a été conservée dans le dossier des données (fichier .bak).",
+      });
+    } catch (err) {
+      setBackupMessage({ type: "error", text: errorMessage(err) });
     } finally {
       setBusy(null);
     }
@@ -174,6 +252,28 @@ function OptionsPage() {
 
   return (
     <div>
+      <div className="options-layout">
+        <nav className="options-nav" role="tablist" aria-label="Sections des options">
+          {OPTIONS_SECTIONS.map((sec) => (
+            <Fragment key={sec.id}>
+              {sec.id === "technique" && <div className="options-nav__sep" />}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={section === sec.id}
+                className={`options-nav__item ${section === sec.id ? "active" : ""}`}
+                onClick={() => setSection(sec.id)}
+              >
+                {sec.label}
+                <small>{sec.hint}</small>
+              </button>
+            </Fragment>
+          ))}
+        </nav>
+
+        <div className="options-content">
+          {section === "personnalisation" && (
+            <>
       <div className="section-title">Apparence</div>
       <div className="card options-card">
         <div className="options-row">
@@ -222,6 +322,11 @@ function OptionsPage() {
         </div>
       </div>
 
+            </>
+          )}
+
+          {section === "configuration" && (
+            <>
       <div className="section-title">OpenRouteService</div>
       <div className="card options-card">
         <div className="options-row">
@@ -262,6 +367,41 @@ function OptionsPage() {
           </div>
         </div>
       </div>
+
+            </>
+          )}
+
+          {section === "sauvegarde" && (
+            <>
+              <div className="section-title">Sauvegarde de la base active</div>
+              <div className="card options-card">
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Sauvegarder</div>
+            <div className="options-row__hint">
+              Enregistre toutes les données de la base active (vélos, sorties, entretien, pièces, parcours et tracés)
+              dans un seul fichier à conserver en lieu sûr.
+            </div>
+          </div>
+          <button className="btn" disabled={busy !== null} onClick={handleBackup}>
+            {busy === "backup" ? "Sauvegarde en cours…" : "Sauvegarder"}
+          </button>
+        </div>
+        <div className="options-row">
+          <div>
+            <div className="options-row__label">Restaurer</div>
+            <div className="options-row__hint">
+              Remplace les données de la base active par celles d'un fichier de sauvegarde. L'état actuel est
+              conservé dans une copie de sécurité.
+            </div>
+          </div>
+          <button className="btn btn-secondary" disabled={busy !== null} onClick={handleRestore}>
+            {busy === "restore" ? "Restauration en cours…" : "Restaurer…"}
+          </button>
+        </div>
+
+                <StatusText message={backupMessage} />
+              </div>
 
       <div className="section-title">Base de données</div>
       <div className="card options-card">
@@ -322,13 +462,19 @@ function OptionsPage() {
         <StatusText message={dbMessage} />
       </div>
 
-      <div className="section-title">Données</div>
-      <div className="card options-card">
+            </>
+          )}
+
+          {section === "technique" && (
+            <>
+              <div className="section-title">Export et import de données</div>
+              <div className="card options-card">
         <div className="options-row">
           <div>
-            <div className="options-row__label">Exporter</div>
+            <div className="options-row__label">Exporter (vélos et sorties)</div>
             <div className="options-row__hint">
-              Enregistre l'ensemble des vélos et des sorties dans un fichier JSON.
+              Enregistre uniquement les vélos et les sorties dans un fichier JSON, pour les réutiliser ailleurs.
+              Ce n'est pas une sauvegarde complète.
             </div>
           </div>
           <button className="btn btn-secondary" disabled={busy !== null} onClick={handleExport}>
@@ -337,7 +483,7 @@ function OptionsPage() {
         </div>
         <div className="options-row">
           <div>
-            <div className="options-row__label">Importer</div>
+            <div className="options-row__label">Importer (vélos et sorties)</div>
             <div className="options-row__hint">
               Ajoute les vélos et sorties d'un fichier JSON exporté précédemment. Les
               sorties déjà présentes sont ignorées, aucune donnée existante n'est
@@ -349,8 +495,8 @@ function OptionsPage() {
           </button>
         </div>
 
-        <StatusText message={dataMessage} />
-      </div>
+                <StatusText message={dataMessage} />
+              </div>
 
       <div className="section-title section-title--danger">Zone dangereuse</div>
       <div className="card options-card options-card--danger">
@@ -378,6 +524,11 @@ function OptionsPage() {
             <div className="options-row__label">Version</div>
           </div>
           <div>{appVersion ?? "…"}</div>
+        </div>
+      </div>
+
+            </>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -27,6 +27,17 @@ function ParcoursPage() {
   const parcoursList = parcoursQuery.data ?? [];
 
   const [openError, setOpenError] = useState<string | null>(null);
+  // Parcours survolé dans le tableau : mis en avant sur la carte, les autres tracés sont atténués.
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  // Parcours dont le tracé est dans la zone visible de la carte (null tant que la carte n'a rien signalé).
+  // Demande de centrage de la carte sur un parcours (le nonce permet de recentrer sur le même après un déplacement).
+  const [focusRequest, setFocusRequest] = useState<{ id: number; nonce: number } | null>(null);
+  const [visibleIds, setVisibleIds] = useState<Set<number> | null>(null);
+
+  /** Évite un nouveau rendu quand le zoom/déplacement ne change pas l'ensemble des parcours visibles. */
+  const handleVisibleChange = useCallback((next: Set<number>) => {
+    setVisibleIds((prev) => (prev && prev.size === next.size && [...next].every((id) => prev.has(id)) ? prev : next));
+  }, []);
   const [selectedTowns, setSelectedTowns] = useState<Set<string>>(new Set());
   const [selectedDirections, setSelectedDirections] = useState<Set<Direction>>(new Set());
   const [distanceRange, setDistanceRange] = useState<[number, number] | null>(null);
@@ -122,7 +133,10 @@ function ParcoursPage() {
       {hasAnyTrack && (
         <>
           <div className="card parcours-overview-map-card" style={{ height: mapHeight }}>
-            <ParcoursOverviewMap parcoursList={filteredList} colorById={colorById} />
+            <ParcoursOverviewMap parcoursList={filteredList} colorById={colorById} highlightedId={hoveredId}
+              focusRequest={focusRequest}
+              onVisibleChange={handleVisibleChange}
+            />
           </div>
           <div
             className="parcours-resize-handle"
@@ -233,7 +247,10 @@ function ParcoursPage() {
                     const color = colorById.get(p.id);
                     const source = parcoursSource(p);
                     return (
-                      <tr key={p.id}>
+                      <tr
+                        key={p.id}
+                        className={visibleIds && p.gpx_data && !visibleIds.has(p.id) ? "parcours-row--offscreen" : undefined}
+                        onMouseEnter={() => setHoveredId(p.id)} onMouseLeave={() => setHoveredId(null)}>
                         <td>
                           {color && <span className="bike-color-dot" style={{ background: color }} title="Couleur du tracé sur la carte" />}
                           {p.name}
@@ -259,6 +276,17 @@ function ParcoursPage() {
                           )}
                         </td>
                         <td className="actions-cell">
+                          {p.gpx_data && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              title="Centrer la carte sur ce parcours"
+                              aria-label={`Centrer la carte sur ${p.name}`}
+                              onClick={() => setFocusRequest({ id: p.id, nonce: Date.now() })}
+                            >
+                              ◎ Centrer
+                            </button>
+                          )}{" "}
                           <Link
                             to="/parcours/$parcoursId"
                             params={{ parcoursId: String(p.id) }}

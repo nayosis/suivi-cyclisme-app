@@ -466,6 +466,23 @@ export async function getMonthsWithRides(): Promise<string[]> {
 }
 
 /**
+ * Ferme la connexion à la base active et oublie le cache : le prochain
+ * {@link getDb} rouvre le fichier (et ré-applique le schéma). À appeler avant
+ * de remplacer le fichier de la base sur le disque (restauration).
+ */
+export async function closeDb(): Promise<void> {
+  const current = dbPromise;
+  dbPromise = null;
+  loadedFilename = null;
+  if (!current) return;
+  try {
+    await (await current).close();
+  } catch {
+    // Connexion déjà invalide : sans impact, le fichier va de toute façon être remplacé.
+  }
+}
+
+/**
  * Supprime **définitivement** toutes les sorties puis tous les vélos —
  * remet l'application dans son état initial (base vide).
  *

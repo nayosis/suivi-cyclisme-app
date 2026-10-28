@@ -19,6 +19,16 @@
     "fs:allow-read-text-file",
     "fs:allow-exists",
     "fs:allow-read-dir",
+    "fs:allow-copy-file",
+    "fs:allow-remove",
+    {
+      "identifier": "fs:allow-copy-file",
+      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+    },
     {
       "identifier": "fs:allow-exists",
       "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]

@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Polyline, Popup, useMap } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { MapContainer, TileLayer, Polyline, Popup, useMap, useMapEvents } from "react-leaflet";
 import { Link } from "@tanstack/react-router";
 import L, { type LatLngTuple } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -10,15 +10,67 @@ interface ParcoursOverviewMapProps {
   parcoursList: Parcours[];
   /** Couleur de chaque tracé, stable indépendamment des filtres (voir `parcours-colors.ts`). */
   colorById: Map<number, string>;
+  /** Parcours survolé dans la liste : son tracé est mis en avant, les autres sont atténués. */
+  highlightedId?: number | null;
+  /** Appelé avec les parcours dont une partie du tracé est dans la zone visible, à chaque déplacement/zoom. */
+  onVisibleChange?: (visibleIds: Set<number>) => void;
+  /** Demande de cadrage sur un parcours ; un nouvel objet (nonce différent) relance le cadrage. */
+  focusRequest?: { id: number; nonce: number } | null;
 }
 
-function FitAll({ positions }: { positions: LatLngTuple[] }) {
+/**
+ * Cadre la carte sur l'ensemble des tracés. Ne se redéclenche que si l'ensemble
+ * de tracés affiché change (`fitKey`), pas à chaque rendu : sinon un simple
+ * survol dans la liste annulerait le zoom de l'utilisateur.
+ */
+function FitAll({ positions, fitKey }: { positions: LatLngTuple[]; fitKey: string }) {
+  const map = useMap();
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
+  useEffect(() => {
+    if (positionsRef.current.length > 0) {
+      map.fitBounds(L.latLngBounds(positionsRef.current), { padding: [24, 24] });
+    }
+  }, [map, fitKey]);
+  return null;
+}
+
+/** Cadre la carte sur le tracé demandé. */
+function FocusRoute({ routes, request }: { routes: OverviewRoute[]; request: { id: number; nonce: number } }) {
   const map = useMap();
   useEffect(() => {
-    if (positions.length > 0) {
-      map.fitBounds(L.latLngBounds(positions), { padding: [24, 24] });
+    const route = routes.find((r) => r.id === request.id);
+    if (route) map.fitBounds(L.latLngBounds(route.positions), { padding: [32, 32] });
+    // Seule une nouvelle demande doit recadrer, pas un changement de la liste de tracés.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, request]);
+  return null;
+}
+
+interface OverviewRoute {
+  id: number;
+  positions: LatLngTuple[];
+}
+
+/** Signale les tracés ayant au moins un point dans la zone visible, au chargement et après chaque déplacement ou zoom. */
+function VisibleReporter({
+  routes,
+  onChange,
+}: {
+  routes: OverviewRoute[];
+  onChange: (visibleIds: Set<number>) => void;
+}) {
+  const map = useMap();
+  const report = () => {
+    const bounds = map.getBounds();
+    const ids = new Set<number>();
+    for (const r of routes) {
+      if (r.positions.some(([lat, lon]) => bounds.contains([lat, lon]))) ids.add(r.id);
     }
-  }, [map, positions]);
+    onChange(ids);
+  };
+  useMapEvents({ moveend: report });
+  useEffect(report, [routes]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
@@ -35,7 +87,7 @@ function InvalidateOnResize() {
 }
 
 /** Vue d'ensemble : le tracé de chaque parcours (ayant un GPX) superposé sur une même carte, cadrée sur l'ensemble. */
-export function ParcoursOverviewMap({ parcoursList, colorById }: ParcoursOverviewMapProps) {
+export function ParcoursOverviewMap({ parcoursList, colorById, highlightedId, onVisibleChange, focusRequest }: ParcoursOverviewMapProps) {
   const routes = useMemo(() => {
     return parcoursList
       .map((p) => {
@@ -69,7 +121,17 @@ export function ParcoursOverviewMap({ parcoursList, colorById }: ParcoursOvervie
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       {routes.map((r) => (
-        <Polyline key={r.id} positions={r.positions} pathOptions={{ color: r.color, weight: 3, opacity: 0.85 }}>
+        <Polyline
+          key={r.id}
+          positions={r.positions}
+          pathOptions={
+            highlightedId == null
+              ? { color: r.color, weight: 3, opacity: 0.85 }
+              : r.id === highlightedId
+                ? { color: r.color, weight: 5, opacity: 1 }
+                : { color: r.color, weight: 2, opacity: 0.15 }
+          }
+        >
           <Popup>
             <strong>{r.name}</strong>
             <br />
@@ -79,8 +141,10 @@ export function ParcoursOverviewMap({ parcoursList, colorById }: ParcoursOvervie
           </Popup>
         </Polyline>
       ))}
-      <FitAll positions={allPositions} />
+      <FitAll positions={allPositions} fitKey={routes.map((r) => r.id).join(",")} />
       <InvalidateOnResize />
+      {focusRequest && <FocusRoute routes={routes} request={focusRequest} />}
+      {onVisibleChange && <VisibleReporter routes={routes} onChange={onVisibleChange} />}
     </MapContainer>
   );
 }

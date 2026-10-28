@@ -1,9 +1,16 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { LatLngTuple } from "leaflet";
 import { DIRECTIONS } from "../types";
 import type { Direction, Parcours, ParcoursInput, Waypoint } from "../types";
 import { errorMessage, formatNumber } from "../format";
-import { buildGpxXml, computeGpxStats, parseGpx } from "../gpx";
+import {
+  bearingToDirection,
+  buildGpxXml,
+  computeGpxStats,
+  computeOutboundDirection,
+  extractOpenRunnerOrigin,
+  parseGpx,
+} from "../gpx";
 import { pickGpxFile } from "../gpx-file";
 import { GpxUploadField } from "../components/GpxUploadField";
 import { ParcoursMap } from "../components/ParcoursMap";
@@ -41,6 +48,8 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
   const [name, setName] = useState(parcours?.name ?? "");
   const [startTown, setStartTown] = useState(parcours?.start_town ?? "");
   const [direction, setDirection] = useState<Direction>(parcours?.direction ?? DIRECTIONS[0].code);
+  // Tant que la direction n'a pas été choisie à la main, elle suit le tracé (jamais en édition d'un parcours existant).
+  const [directionTouched, setDirectionTouched] = useState(!isNew);
   const [siteUrl, setSiteUrl] = useState(parcours?.site_url ?? "");
   const [gpxData, setGpxData] = useState<string | null>(parcours?.gpx_data ?? null);
   const [waypoints, setWaypoints] = useState<Waypoint[] | null>(parcours?.waypoints ?? null);
@@ -72,10 +81,24 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
 
   const computedStats = useMemo(() => (points.length > 0 ? computeGpxStats(points) : null), [points]);
 
+  const outbound = useMemo(() => computeOutboundDirection(points), [points]);
+  const outboundDirection = outbound ? DIRECTIONS.find((d) => d.code === bearingToDirection(outbound.bearing)) : null;
+
+  // Importer ou dessiner un tracé propose automatiquement la direction de l'aller.
+  useEffect(() => {
+    if (outbound && !directionTouched) setDirection(bearingToDirection(outbound.bearing));
+  }, [outbound, directionTouched]);
+
   /** Un import/retrait de fichier change le tracé : les points de passage d'un éventuel dessin ne correspondent plus à rien. */
   function handleGpxFileChange(next: string | null) {
     setGpxData(next);
     setWaypoints(null);
+    // Un GPX OpenRunner préremplit le libellé et le lien de la fiche, sans écraser une saisie existante.
+    const origin = next ? extractOpenRunnerOrigin(next) : null;
+    if (origin) {
+      if (!name.trim()) setName(origin.name);
+      if (!siteUrl.trim()) setSiteUrl(origin.url);
+    }
   }
 
   async function handlePickGpxForEntry() {
@@ -183,18 +206,23 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
                 sont calculés automatiquement.
               </span>
             </button>
-            <button type="button" className="parcours-entry-choice" onClick={() => setDrawMode(true)}>
-              <strong>Tracer un itinéraire</strong>
-              <span>
-                Dessinez le parcours point par point sur la carte. Le tracé devient la référence du parcours et
-                pourra être modifié à tout moment.
-              </span>
-            </button>
             <button type="button" className="parcours-entry-choice" onClick={() => setManualMode(true)}>
               <strong>Sans tracé</strong>
               <span>
                 Le tracé est géré ailleurs : vous renseignez seulement le lien, ainsi que la distance et le dénivelé à
                 la main. Aucun tracé n'est affiché sur la carte.
+              </span>
+            </button>
+            <button type="button" className="parcours-entry-choice"
+              disabled
+              title="Fonction désactivée pour le moment"
+              onClick={() => setDrawMode(true)}
+            >
+              <strong>Tracer un itinéraire</strong>
+              <span>(désactivé pour le moment)</span>
+              <span>
+                Dessinez le parcours point par point sur la carte. Le tracé devient la référence du parcours et
+                pourra être modifié à tout moment.
               </span>
             </button>
           </div>
@@ -251,7 +279,10 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
               <select
                 id="parcours-form-direction"
                 value={direction}
-                onChange={(e) => setDirection(e.target.value as Direction)}
+                onChange={(e) => {
+                  setDirectionTouched(true);
+                  setDirection(e.target.value as Direction);
+                }}
               >
                 {DIRECTIONS.map((d) => (
                   <option key={d.code} value={d.code}>
@@ -259,6 +290,28 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
                   </option>
                 ))}
               </select>
+              <div className="field-hint">Vers où l'on roule sur la première moitié du tracé (l'aller).</div>
+              {outbound && outboundDirection && (
+                <div className="field-hint">
+                  Détecté : cap {Math.round(outbound.bearing)}° ({outboundDirection.arrow} {outboundDirection.label})
+                  {outbound.straightness < 0.5 && " — tracé sinueux, direction à vérifier"}
+                  {direction !== outboundDirection.code && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => {
+                          setDirection(outboundDirection.code);
+                          setDirectionTouched(false);
+                        }}
+                      >
+                        Appliquer
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
