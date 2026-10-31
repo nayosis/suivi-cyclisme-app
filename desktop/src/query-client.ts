@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { clearTrackCache } from "./parcours-tracks";
 
 /**
  * Client de requêtes partagé par toute l'app. `staleTime` évite de
@@ -41,10 +42,12 @@ export function invalidateMaintenance() {
 }
 
 export function invalidateParcours() {
+  clearTrackCache();
   return queryClient.invalidateQueries({ queryKey: parcoursKey });
 }
 
 /** À utiliser après un changement de base de données (bascule, import, réinitialisation) : plus rien du cache n'est valide. */
 export function invalidateEverything() {
+  clearTrackCache();
   return queryClient.invalidateQueries();
 }

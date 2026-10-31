@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS parcours (
     waypoints_json TEXT
 );
 
+-- Dossiers de rangement des parcours (ex. "Sorties usuelles", "Tour de Bretagne").
+-- Un parcours est dans au plus un dossier (parcours.folder_id, NULL = non classe).
+CREATE TABLE IF NOT EXISTS parcours_folders (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+
 -- Catalogue des emplacements du velo (partage par tous les velos), positionnes
 -- sur le schema affiche dans l'onglet Entretien. mandatory = un exemplaire est
 -- automatiquement cree pour chaque velo (existant ou futur) des que cet
@@ -194,6 +201,10 @@ export async function getDb(): Promise<Database> {
     // Migration : les parcours créés avant l'ajout du traceur d'itinéraire n'ont pas cette colonne.
     if (parcoursColumns.length > 0 && !parcoursColumns.some((c) => c.name === "waypoints_json")) {
       await db.execute("ALTER TABLE parcours ADD COLUMN waypoints_json TEXT");
+    }
+    // Migration : les parcours créés avant l'ajout des dossiers n'ont pas cette colonne.
+    if (parcoursColumns.length > 0 && !parcoursColumns.some((c) => c.name === "folder_id")) {
+      await db.execute("ALTER TABLE parcours ADD COLUMN folder_id INTEGER");
     }
     return db;
   })();
@@ -472,11 +483,12 @@ export async function getMonthsWithRides(): Promise<string[]> {
  */
 export async function closeDb(): Promise<void> {
   const current = dbPromise;
+  const filename = loadedFilename;
   dbPromise = null;
   loadedFilename = null;
-  if (!current) return;
+  if (!current || !filename) return;
   try {
-    await (await current).close();
+    await (await current).close(`sqlite:${filename}`);
   } catch {
     // Connexion déjà invalide : sans impact, le fichier va de toute façon être remplacé.
   }

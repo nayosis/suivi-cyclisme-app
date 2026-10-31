@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useFixedMenu } from "../use-fixed-menu";
 import type { PartTag } from "../types";
 
 interface PartActionsMenuProps {
@@ -31,49 +32,12 @@ export function PartActionsMenu({
   onRestore,
   onToggleTag,
 }: PartActionsMenuProps) {
-  const [open, setOpen] = useState(false);
+  const { open, pos, buttonRef, menuRef, toggle, close } = useFixedMenu(140);
   const [tagsOpen, setTagsOpen] = useState(false);
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  function close() {
-    setOpen(false);
-    setTagsOpen(false);
-  }
-
-  function toggle() {
-    if (open) return close();
-    const rect = buttonRef.current!.getBoundingClientRect();
-    const right = window.innerWidth - rect.right;
-    // Ouvre vers le haut quand il n'y a pas assez de place sous le bouton.
-    setPos(
-      rect.bottom + 140 > window.innerHeight
-        ? { bottom: window.innerHeight - rect.top + 6, right }
-        : { top: rect.bottom + 6, right }
-    );
-    setOpen(true);
-  }
-
+  // Le sous-menu des tags repart fermé à chaque ouverture du menu.
   useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: MouseEvent) {
-      if (menuRef.current?.contains(e.target as Node) || buttonRef.current?.contains(e.target as Node)) return;
-      close();
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
+    if (!open) setTagsOpen(false);
   }, [open]);
 
   return (

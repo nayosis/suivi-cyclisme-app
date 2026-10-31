@@ -52,7 +52,7 @@ export function ParcoursView({ parcours, onBack, onDelete }: ParcoursViewProps) 
         <h1 className="page-header__title">{parcours.name}</h1>
       </div>
 
-      <div className="card maintenance-form-card">
+      <div className="card maintenance-form-card maintenance-form-card--fluid">
         <div className="parcours-view-stats">
           <div className="parcours-view-stat">
             <div className="parcours-view-stat__label">Commune de départ</div>

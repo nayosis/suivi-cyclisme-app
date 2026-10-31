@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Polyline, Popup, useMap, useMapEvents } from "react-leaflet";
 import { Link } from "@tanstack/react-router";
 import L, { type LatLngTuple } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { parseGpx } from "../gpx";
-import type { Parcours } from "../types";
+import { loadTrackPositions } from "../parcours-tracks";
+import { RefreshIcon } from "./RefreshIcon";
+import type { ParcoursSummary } from "../types";
 
 interface ParcoursOverviewMapProps {
-  parcoursList: Parcours[];
+  parcoursList: ParcoursSummary[];
   /** Couleur de chaque tracé, stable indépendamment des filtres (voir `parcours-colors.ts`). */
   colorById: Map<number, string>;
   /** Parcours survolé dans la liste : son tracé est mis en avant, les autres sont atténués. */
   highlightedId?: number | null;
+  /** Parcours sélectionné dans la liste : tracé plus épais, sans atténuer les autres. */
+  selectedId?: number | null;
   /** Appelé avec les parcours dont une partie du tracé est dans la zone visible, à chaque déplacement/zoom. */
   onVisibleChange?: (visibleIds: Set<number>) => void;
   /** Demande de cadrage sur un parcours ; un nouvel objet (nonce différent) relance le cadrage. */
@@ -86,36 +89,80 @@ function InvalidateOnResize() {
   return null;
 }
 
-/** Vue d'ensemble : le tracé de chaque parcours (ayant un GPX) superposé sur une même carte, cadrée sur l'ensemble. */
-export function ParcoursOverviewMap({ parcoursList, colorById, highlightedId, onVisibleChange, focusRequest }: ParcoursOverviewMapProps) {
-  const routes = useMemo(() => {
-    return parcoursList
-      .map((p) => {
-        if (!p.gpx_data) return null;
-        try {
-          const points = parseGpx(p.gpx_data);
-          if (points.length < 2) return null;
-          return {
-            id: p.id,
-            name: p.name,
-            color: colorById.get(p.id) ?? "#2563eb",
-            positions: points.map((pt): LatLngTuple => [pt.lat, pt.lon]),
-          };
-        } catch {
-          return null;
+/** Nombre de tracés lus en base puis analysés à chaque tranche, avant de rendre la main à l'interface. */
+const BATCH_SIZE = 6;
+
+/** Centre de la France, vue initiale tant qu'aucun tracé n'est chargé. */
+const FRANCE_CENTER: LatLngTuple = [46.6, 2.5];
+
+interface OverviewRouteFull extends OverviewRoute {
+  name: string;
+  color: string;
+}
+
+/**
+ * Charge les tracés des parcours par petits lots (lecture en base + analyse),
+ * en rendant la main à l'interface entre chaque : la page reste réactive et les
+ * tracés apparaissent au fur et à mesure.
+ */
+function useOverviewRoutes(parcoursList: ParcoursSummary[], colorById: Map<number, string>) {
+  const [state, setState] = useState<{ routes: OverviewRouteFull[]; done: number; total: number; loading: boolean }>({
+    routes: [],
+    done: 0,
+    total: 0,
+    loading: false,
+  });
+
+  useEffect(() => {
+    const withTrack = parcoursList.filter((p) => p.has_track);
+    let cancelled = false;
+    setState({ routes: [], done: 0, total: withTrack.length, loading: withTrack.length > 0 });
+
+    (async () => {
+      const acc: OverviewRouteFull[] = [];
+      try {
+        for (let index = 0; index < withTrack.length && !cancelled; index += BATCH_SIZE) {
+          const batch = withTrack.slice(index, index + BATCH_SIZE);
+          const positionsById = await loadTrackPositions(batch.map((p) => p.id));
+          if (cancelled) return;
+          for (const p of batch) {
+            const positions = positionsById.get(p.id);
+            if (positions && positions.length >= 2) {
+              acc.push({ id: p.id, name: p.name, color: colorById.get(p.id) ?? "#2563eb", positions });
+            }
+          }
+          const done = Math.min(index + BATCH_SIZE, withTrack.length);
+          setState({ routes: [...acc], done, total: withTrack.length, loading: done < withTrack.length });
+          // Rend la main au navigateur (rendu, clics) avant le lot suivant.
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
-      })
-      .filter((r): r is { id: number; name: string; color: string; positions: LatLngTuple[] } => r != null);
+      } catch {
+        // Lecture impossible : on garde les tracés déjà affichés et on arrête l'indicateur.
+        if (!cancelled) setState((prev) => ({ ...prev, loading: false }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [parcoursList, colorById]);
+
+  return state;
+}
+
+/** Vue d'ensemble : le tracé de chaque parcours (ayant un GPX) superposé sur une même carte, cadrée sur l'ensemble. */
+export function ParcoursOverviewMap({ parcoursList, colorById, highlightedId, selectedId, onVisibleChange, focusRequest }: ParcoursOverviewMapProps) {
+  const { routes, done, total, loading } = useOverviewRoutes(parcoursList, colorById);
 
   const allPositions = useMemo(() => routes.flatMap((r) => r.positions), [routes]);
 
-  if (routes.length === 0) {
+  if (routes.length === 0 && !loading) {
     return <div className="empty-state">Aucun tracé disponible pour les parcours affichés.</div>;
   }
 
   return (
-    <MapContainer center={allPositions[0]} zoom={6} scrollWheelZoom className="parcours-overview-map">
+    <>
+    <MapContainer center={allPositions[0] ?? FRANCE_CENTER} zoom={6} scrollWheelZoom preferCanvas className="parcours-overview-map">
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -126,7 +173,9 @@ export function ParcoursOverviewMap({ parcoursList, colorById, highlightedId, on
           positions={r.positions}
           pathOptions={
             highlightedId == null
-              ? { color: r.color, weight: 3, opacity: 0.85 }
+              ? r.id === selectedId
+                ? { color: r.color, weight: 5, opacity: 1 }
+                : { color: r.color, weight: 3, opacity: 0.85 }
               : r.id === highlightedId
                 ? { color: r.color, weight: 5, opacity: 1 }
                 : { color: r.color, weight: 2, opacity: 0.15 }
@@ -141,10 +190,23 @@ export function ParcoursOverviewMap({ parcoursList, colorById, highlightedId, on
           </Popup>
         </Polyline>
       ))}
-      <FitAll positions={allPositions} fitKey={routes.map((r) => r.id).join(",")} />
+      {/* Cadrage et suivi de la zone visible seulement une fois tous les tracés chargés (sinon la carte « saute » à chaque tranche). */}
+      {!loading && <FitAll positions={allPositions} fitKey={routes.map((r) => r.id).join(",")} />}
       <InvalidateOnResize />
       {focusRequest && <FocusRoute routes={routes} request={focusRequest} />}
-      {onVisibleChange && <VisibleReporter routes={routes} onChange={onVisibleChange} />}
+      {!loading && onVisibleChange && <VisibleReporter routes={routes} onChange={onVisibleChange} />}
     </MapContainer>
+    {loading && (
+      <div className="parcours-map-loading" role="status">
+        <RefreshIcon spinning />
+        <span>
+          Chargement des tracés… {done}/{total}
+        </span>
+        <div className="parcours-map-loading__bar">
+          <i style={{ width: `${total > 0 ? (done / total) * 100 : 0}%` }} />
+        </div>
+      </div>
+    )}
+    </>
   );
 }

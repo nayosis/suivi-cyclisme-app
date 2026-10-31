@@ -1,4 +1,4 @@
-import type { Parcours } from "./types";
+import type { Parcours, ParcoursSummary } from "./types";
 
 /**
  * D'où vient le tracé d'un parcours :
@@ -8,9 +8,11 @@ import type { Parcours } from "./types";
  */
 export type ParcoursSource = "drawn" | "imported" | "none";
 
-export function parcoursSource(p: Parcours): ParcoursSource {
-  if (p.waypoints && p.waypoints.length > 0) return "drawn";
-  if (p.gpx_data) return "imported";
+export function parcoursSource(p: Parcours | ParcoursSummary): ParcoursSource {
+  const drawn = "is_drawn" in p ? p.is_drawn : !!p.waypoints && p.waypoints.length > 0;
+  const hasTrack = "has_track" in p ? p.has_track : !!p.gpx_data;
+  if (drawn) return "drawn";
+  if (hasTrack) return "imported";
   return "none";
 }
 

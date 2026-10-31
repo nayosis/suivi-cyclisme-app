@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { LatLngTuple } from "leaflet";
 import { DIRECTIONS } from "../types";
 import type { Direction, Parcours, ParcoursInput, Waypoint } from "../types";
@@ -15,6 +16,8 @@ import { pickGpxFile } from "../gpx-file";
 import { GpxUploadField } from "../components/GpxUploadField";
 import { ParcoursMap } from "../components/ParcoursMap";
 import { ParcoursRouteDrawer } from "../components/ParcoursRouteDrawer";
+import * as parcoursDb from "../parcours-db";
+import { parcoursKey } from "../query-client";
 import { reverseGeocodeTown } from "../ors";
 import { useOrsApiKey } from "../ors-context";
 
@@ -51,6 +54,8 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
   // Tant que la direction n'a pas été choisie à la main, elle suit le tracé (jamais en édition d'un parcours existant).
   const [directionTouched, setDirectionTouched] = useState(!isNew);
   const [siteUrl, setSiteUrl] = useState(parcours?.site_url ?? "");
+  const [folderId, setFolderId] = useState(parcours?.folder_id != null ? String(parcours.folder_id) : "");
+  const foldersQuery = useQuery({ queryKey: [...parcoursKey, "folders"], queryFn: parcoursDb.listFolders });
   const [gpxData, setGpxData] = useState<string | null>(parcours?.gpx_data ?? null);
   const [waypoints, setWaypoints] = useState<Waypoint[] | null>(parcours?.waypoints ?? null);
   // Repli manuel, utilisé uniquement pour un parcours ancien édité sans aucun tracé.
@@ -174,6 +179,7 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
         elevation_m: elevationVal,
         direction,
         site_url: normalizeSiteUrl(siteUrl),
+        folder_id: folderId ? Number(folderId) : null,
         gpx_data: gpxData,
         waypoints,
       });
@@ -196,7 +202,7 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
       </div>
 
       {showEntryChoice ? (
-        <div className="card maintenance-form-card">
+        <div className="card maintenance-form-card maintenance-form-card--fluid">
           <div className="section-title" style={{ marginTop: 0 }}>Comment voulez-vous créer ce parcours ?</div>
           <div className="parcours-entry-choices">
             <button type="button" className="parcours-entry-choice" onClick={handlePickGpxForEntry}>
@@ -341,6 +347,18 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
           )}
 
           <div className="field">
+            <label htmlFor="parcours-form-folder">Dossier</label>
+            <select id="parcours-form-folder" value={folderId} onChange={(e) => setFolderId(e.target.value)}>
+              <option value="">Non classé</option>
+              {(foldersQuery.data ?? []).map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
             <label htmlFor="parcours-form-site-url">Lien vers un site (optionnel)</label>
             <input
               id="parcours-form-site-url"
@@ -360,9 +378,11 @@ export function ParcoursForm({ parcours, onSave, onCancel }: ParcoursFormProps) 
               </p>
               <ParcoursMap points={points} />
               <div className="parcours-track-actions">
-                <button type="button" className="link-button" onClick={() => setDrawMode(true)}>
-                  {waypoints ? "Modifier le tracé sur la carte" : "Remplacer par un tracé dessiné à la main"}
-                </button>
+                {waypoints && (
+                  <button type="button" className="link-button" onClick={() => setDrawMode(true)}>
+                    Modifier le tracé sur la carte
+                  </button>
+                )}
                 <button type="button" className="link-button" onClick={handleReplaceGpx}>
                   Remplacer par un fichier GPX…
                 </button>

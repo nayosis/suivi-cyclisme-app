@@ -71,6 +71,8 @@ export interface Parcours {
   direction: Direction;
   /** Lien vers un site décrivant le parcours (ex. Openrunner, Komoot), optionnel. */
   site_url: string | null;
+  /** Dossier de rangement (`null` = non classé). */
+  folder_id: number | null;
   /** Contenu brut (XML) du fichier GPX importé ou calculé, `null` si aucun tracé n'est associé. */
   gpx_data: string | null;
   /**
@@ -81,6 +83,24 @@ export interface Parcours {
   waypoints: Waypoint[] | null;
 }
 
+/**
+ * Parcours tel qu'affiché dans la liste : sans le contenu du tracé (`gpx_data`)
+ * ni les points de passage, qui sont lourds et chargés à part (voir
+ * `parcours-tracks.ts`). Les deux indicateurs suffisent à la liste.
+ */
+export type ParcoursSummary = Omit<Parcours, "gpx_data" | "waypoints"> & {
+  /** Un tracé (GPX) est associé au parcours. */
+  has_track: boolean;
+  /** Le tracé a été dessiné dans l'application (points de passage conservés). */
+  is_drawn: boolean;
+};
+
+/** Dossier de rangement des parcours (ex. « Sorties usuelles »). */
+export interface ParcoursFolder {
+  id: number;
+  name: string;
+}
+
 export interface ParcoursInput {
   name: string;
   start_town: string;
@@ -88,6 +108,7 @@ export interface ParcoursInput {
   elevation_m: number;
   direction: Direction;
   site_url: string | null;
+  folder_id: number | null;
   gpx_data: string | null;
   waypoints: Waypoint[] | null;
 }

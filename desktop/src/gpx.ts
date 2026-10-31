@@ -40,6 +40,34 @@ export function parseGpx(xml: string): GpxPoint[] {
   return points;
 }
 
+/**
+ * Positions `[lat, lon]` d'un GPX, allégées à `maxPoints` au plus (premier et
+ * dernier points conservés). Lecture par expression régulière plutôt que par
+ * `DOMParser` : bien plus rapide sur de gros fichiers, ce qui suffit pour
+ * l'affichage d'un tracé sur une carte (pas de validation, pas d'altitude).
+ */
+export function extractPositions(xml: string, maxPoints: number): [number, number][] {
+  const attr = (tag: string, name: string): number => {
+    const m = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`).exec(tag);
+    return m ? parseFloat(m[1]) : NaN;
+  };
+  const collect = (tagName: string): [number, number][] => {
+    const re = new RegExp(`<${tagName}\\b[^>]*>`, "g");
+    const out: [number, number][] = [];
+    for (let m = re.exec(xml); m; m = re.exec(xml)) {
+      const lat = attr(m[0], "lat");
+      const lon = attr(m[0], "lon");
+      if (Number.isFinite(lat) && Number.isFinite(lon)) out.push([lat, lon]);
+    }
+    return out;
+  };
+  const all = collect("trkpt");
+  const points = all.length > 0 ? all : collect("rtept");
+  if (points.length <= maxPoints) return points;
+  const step = Math.ceil(points.length / maxPoints);
+  return points.filter((_, i) => i % step === 0 || i === points.length - 1);
+}
+
 /** Métadonnées d'un GPX exporté depuis OpenRunner. */
 export interface OpenRunnerOrigin {
   /** Libellé du parcours, sans le suffixe d'identifiant. */

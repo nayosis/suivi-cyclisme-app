@@ -1,4 +1,4 @@
-import type { Parcours } from "./types";
+import type { ParcoursSummary } from "./types";
 
 /** Palette cyclique pour distinguer visuellement les tracés qui se chevauchent sur la carte. */
 export const PARCOURS_ROUTE_COLORS = [
@@ -18,9 +18,9 @@ export const PARCOURS_ROUTE_COLORS = [
  * de l'ordre d'affichage courant — un parcours garde la même couleur sur la
  * carte et dans le tableau, quels que soient les filtres.
  */
-export function buildParcoursColorMap(parcoursList: Parcours[]): Map<number, string> {
+export function buildParcoursColorMap(parcoursList: ParcoursSummary[]): Map<number, string> {
   const withTrack = parcoursList
-    .filter((p) => p.gpx_data)
+    .filter((p) => p.has_track)
     .slice()
     .sort((a, b) => a.id - b.id);
   const colorById = new Map<number, string>();
