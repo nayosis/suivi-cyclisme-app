@@ -137,7 +137,8 @@ async function isValidSuiviCyclismeDb(filename: string): Promise<boolean> {
   } finally {
     if (database) {
       try {
-        await database.close();
+        // Sans argument, `close` ferme TOUS les pools (dont la base active) : on cible celui-ci.
+        await database.close(`sqlite:${filename}`);
       } catch {
         // rien à faire : la connexion est de toute façon abandonnée
       }
