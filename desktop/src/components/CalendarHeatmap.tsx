@@ -2,6 +2,8 @@ import { useMemo, useState, type CSSProperties } from "react";
 import type { DayValue } from "../db";
 import { formatNumber } from "../format";
 import { useHeatmapColor } from "../heatmap-color-context";
+import { findHeatmapPalette, HEATMAP_CUSTOM } from "../heatmap-palettes";
+import { useTheme } from "../theme-context";
 
 interface CalendarHeatmapProps {
   year: number;
@@ -43,8 +45,16 @@ function levelFor(value: number): number {
 
 export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
   const [hovered, setHovered] = useState<{ x: number; y: number; cell: Cell } | null>(null);
-  const { color } = useHeatmapColor();
-  const cardStyle = color ? ({ "--heatmap-color": color } as CSSProperties) : undefined;
+  const { palette, color } = useHeatmapColor();
+  const { resolvedDark } = useTheme();
+  // Triptyque : une couleur par palier (variante selon le thème). Sinon, une seule couleur à trois intensités.
+  const triptych = findHeatmapPalette(palette);
+  const levelColors = triptych ? (resolvedDark ? triptych.dark : triptych.light) : null;
+  const cardStyle: CSSProperties | undefined = levelColors
+    ? ({ "--heat-1": levelColors[0], "--heat-2": levelColors[1], "--heat-3": levelColors[2] } as CSSProperties)
+    : palette === HEATMAP_CUSTOM && color
+      ? ({ "--heatmap-color": color } as CSSProperties)
+      : undefined;
 
   const byDate = useMemo(() => {
     const map = new Map<string, DayValue>();
@@ -97,7 +107,7 @@ export function CalendarHeatmap({ year, data }: CalendarHeatmapProps) {
   }, [year, byDate]);
 
   return (
-    <div className="card chart-card calendar-heatmap-card" style={cardStyle}>
+    <div className={`card chart-card calendar-heatmap-card ${triptych ? "calendar-heatmap-card--triptych" : ""}`} style={cardStyle}>
       <div className="chart-card__title">Calendrier d'activité {year}</div>
       <div className="calendar-heatmap">
         <div className="calendar-heatmap__side">

@@ -6,7 +6,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { exportToFile, importFromFile } from "../data-transfer";
 import { backupToFile, pickBackupFile, restoreFromFile } from "../backup";
 import { useTheme, type ThemeMode } from "../theme-context";
-import { useHeatmapColor } from "../heatmap-color-context";
+import { HeatmapPalettePicker } from "../components/HeatmapPalettePicker";
 import { useOrsApiKey, useOrsQuota } from "../ors-context";
 import { formatOrsQuota } from "../ors-quota";
 import { errorMessage } from "../format";
@@ -35,9 +35,6 @@ const THEME_LABELS: Record<ThemeMode, string> = {
   light: "Clair",
   dark: "Sombre",
 };
-
-/** Couleur d'accent par défaut de chaque thème (voir theme.css) — sert de valeur affichée dans le sélecteur tant qu'aucune couleur personnalisée n'est choisie. */
-const ACCENT_FALLBACK = { light: "#2a78d6", dark: "#3987e5" };
 
 interface StatusMessage {
   type: "success" | "warning" | "error";
@@ -83,9 +80,7 @@ function StatusText({ message }: { message: StatusMessage | null }) {
 }
 
 function OptionsPage() {
-  const { mode, setMode, resolvedDark } = useTheme();
-  const { color: heatmapColor, setColor: setHeatmapColor } = useHeatmapColor();
-  const heatmapColorValue = heatmapColor ?? (resolvedDark ? ACCENT_FALLBACK.dark : ACCENT_FALLBACK.light);
+  const { mode, setMode } = useTheme();
   const { apiKey: orsApiKey, setApiKey: setOrsApiKey } = useOrsApiKey();
   const orsQuota = useOrsQuota();
   const [busy, setBusy] = useState<"export" | "import" | "backup" | "restore" | null>(null);
@@ -293,32 +288,16 @@ L'état actuel est conservé dans une copie de sécurité à côté de la base. 
             ))}
           </div>
         </div>
-        <div className="options-row">
+        <div className="options-row options-row--stacked">
           <div>
-            <div className="options-row__label">Couleur du calendrier d'activité</div>
+            <div className="options-row__label">Palette du calendrier d'activité</div>
             <div className="options-row__hint">
-              Personnalisez la couleur des cases du calendrier d'activité (Tableau de
-              bord). Par défaut, il suit la couleur d'accent du thème.
+              Trois couleurs pour les trois paliers de distance du calendrier (Tableau de bord) : jusqu'à 75 km,
+              jusqu'à 150 km, au-delà. Les jours sans sortie restent gris. Chaque palette a une variante claire
+              et une variante sombre, choisie selon le thème.
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="color"
-              value={heatmapColorValue}
-              onChange={(e) => setHeatmapColor(e.target.value)}
-              className="color-input"
-              aria-label="Couleur du calendrier d'activité"
-            />
-            {heatmapColor && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setHeatmapColor(null)}
-              >
-                Réinitialiser
-              </button>
-            )}
-          </div>
+          <HeatmapPalettePicker />
         </div>
       </div>
 
